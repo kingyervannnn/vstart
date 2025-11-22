@@ -318,7 +318,9 @@ const SettingsButton = ({
     }
     return 'bottom'
   })()
-  const masterLayoutMode = (settings?.appearance?.masterLayout === 'classic') ? 'classic' : 'modern'
+  // Use resolved appearance for master layout when appearance workspaces are enabled
+  const effectiveAppearance = settings?.appearance || {}
+  const masterLayoutMode = (effectiveAppearance?.masterLayout === 'classic') ? 'classic' : 'modern'
   const isClassicLayout = masterLayoutMode === 'classic'
   const speedDialOffsetModern = Number(settings?.speedDial?.verticalOffset ?? 0)
   const speedDialOffsetClassic = Number(settings?.speedDial?.landscapeOffset ?? 0)
@@ -1446,7 +1448,7 @@ const SettingsButton = ({
                           <label className="inline-flex items-center cursor-pointer select-none">
                             <input
                               type="checkbox"
-                              checked={!!settings?.appearance?.mirrorLayout}
+                              checked={!!effectiveAppearance?.mirrorLayout}
                               onChange={(e) => onToggleMirrorLayout?.(!!e.target.checked)}
                             />
                           </label>
@@ -1459,7 +1461,7 @@ const SettingsButton = ({
                           <label className="inline-flex items-center cursor-pointer select-none">
                             <input
                               type="checkbox"
-                              checked={!!settings?.appearance?.swapClassicTabsWithPageSwitcher}
+                              checked={!!effectiveAppearance?.swapClassicTabsWithPageSwitcher}
                               onChange={(e) => onToggleSwapClassicTabsWithPageSwitcher?.(!!e.target.checked)}
                             />
                           </label>
@@ -1472,7 +1474,7 @@ const SettingsButton = ({
                           <label className="inline-flex items-center cursor-pointer select-none">
                             <input
                               type="checkbox"
-                              checked={!!settings?.appearance?.swapModernTabsWithPageSwitcher}
+                              checked={!!effectiveAppearance?.swapModernTabsWithPageSwitcher}
                               onChange={(e) => onToggleSwapModernTabsWithPageSwitcher?.(!!e.target.checked)}
                             />
                           </label>

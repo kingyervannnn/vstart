@@ -2912,17 +2912,21 @@ function App() {
         );
         const baseAppearance = prev.appearance || {};
         const overrides = state.overrides || {};
+        const isMasterTarget = targetId === MASTER_APPEARANCE_ID;
         const useOverride =
-          state.enabled && targetId !== MASTER_APPEARANCE_ID;
-        const currentAppearance = useOverride
-          ? overrides[targetId] || baseAppearance
-          : baseAppearance;
+          state.enabled && !isMasterTarget;
+        // When editing master override, use existing master override if it exists, otherwise use base
+        // When editing workspace override, use workspace override if it exists, otherwise use base
+        const currentAppearance = isMasterTarget
+          ? overrides[MASTER_APPEARANCE_ID] || baseAppearance
+          : useOverride
+            ? overrides[targetId] || baseAppearance
+            : baseAppearance;
         const nextAppearance = mutator(currentAppearance) || currentAppearance;
         const nextState = {
           ...state,
           lastSelectedId: workspaceId || targetId,
         };
-        const isMasterTarget = targetId === MASTER_APPEARANCE_ID;
         const applyEverywhere = isMasterTarget;
         if (
           nextAppearance === currentAppearance &&
@@ -2939,6 +2943,7 @@ function App() {
             appearanceWorkspaces: {
               ...nextState,
               overrides: {
+                ...overrides,
                 [MASTER_APPEARANCE_ID]: nextAppearance,
               },
             },

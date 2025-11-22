@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <style>
+      .s { fill: none; stroke: #bdbdbd; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <rect x="10" y="10" width="16" height="16" rx="3" class="s"/>
+  <rect x="38" y="10" width="16" height="16" rx="3" class="s"/>
+  <rect x="10" y="38" width="16" height="16" rx="3" class="s"/>
+  <rect x="38" y="38" width="16" height="16" rx="3" class="s"/>
+</svg>

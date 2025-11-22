@@ -1,0 +1,82 @@
+
+services:
+  vivaldi-hybrid-startpage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - ai-api
+      - icons-api
+      - stt-api
+    volumes:
+      - ./src:/app/src:ro
+      - ./public:/app/public:ro
+    restart: unless-stopped
+    container_name: vivaldi-hybrid-startpage
+
+  icons-api:
+    image: node:18-alpine
+    working_dir: /app
+    command: node server/icons-server.mjs
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./server:/app/server:ro
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    container_name: vivaldi-icons-api
+
+  ai-api:
+    image: node:18-alpine
+    working_dir: /app
+    command: node server/ai-server.mjs
+    environment:
+      - AI_PORT=3200
+      - DATA_DIR=/app/uploads/ai
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./server:/app/server:ro
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    container_name: vivaldi-ai-api
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3200/ai/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Local STT service (Whisper ASR webservice)
+  stt-api:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    environment:
+      - ASR_MODEL=small
+      - ASR_ENGINE=faster_whisper
+      - NUM_WORKERS=1
+    ports:
+      - "8090:9000"
+    restart: unless-stopped
+    container_name: vivaldi-stt-api
+
+  tts-api:
+    profiles: ["tts"]
+    image: ghcr.io/coqui-ai/tts:latest
+    command: tts-server --port 5002 --model_name "tts_models/en/ljspeech/tacotron2-DDC" --use_cuda False
+    environment:
+      - COQUI_TOS_AGREED=1
+    ports:
+      - "8088:5002"
+    restart: unless-stopped
+    container_name: vivaldi-tts-api
+
+  # No bundled SearXNG; app proxies to host SearXNG at host.docker.internal:8888
+
+networks:
+  default:
+    name: vivaldi-network

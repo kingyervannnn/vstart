@@ -1,0 +1,30 @@
+@keyframes banner-scroll-seamless {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.banner-scroll-container {
+  animation: banner-scroll-seamless 24s linear infinite;
+  will-change: transform;
+}
+
+.banner-scroll-container-transient {
+  animation: banner-scroll-transient 4s linear forwards;
+  will-change: transform;
+}
+
+@keyframes banner-scroll-transient {
+  0% {
+    transform: translateX(0);
+  }
+  85% {
+    transform: translateX(calc(-50% * 0.8));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}

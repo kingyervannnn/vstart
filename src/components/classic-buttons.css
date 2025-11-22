@@ -1,0 +1,137 @@
+/* Enhanced Classic Workspace Buttons Styling */
+
+.classic-workspace-button {
+  position: relative;
+  overflow: hidden;
+  border: none;
+}
+
+/* Modern active state with enhanced visual feedback */
+.classic-workspace-button.classic-active {
+  transform: translateY(-2px);
+}
+
+.classic-workspace-button.classic-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.02) 100%);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Subtle inactive state with hover enhancement */
+.classic-workspace-button.classic-inactive {
+  position: relative;
+}
+
+.classic-workspace-button.classic-inactive:hover {
+  transform: translateY(2px) scale(1.02);
+}
+
+.classic-workspace-button.classic-inactive::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.classic-workspace-button.classic-inactive:hover::after {
+  opacity: 1;
+}
+
+/* Enhanced focus states for accessibility */
+.classic-workspace-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
+  z-index: 20;
+}
+
+/* Smooth transitions for all interactions */
+.classic-workspace-button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Enhanced icon positioning and effects */
+.classic-workspace-button svg {
+  position: relative;
+  z-index: 2;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.classic-workspace-button.classic-active svg {
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+}
+
+/* Subtle animation on workspace change */
+.classic-workspace-button.classic-active {
+  animation: classicActivate 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes classicActivate {
+  0% {
+    transform: translateY(6px) scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateY(-4px) scale(1.05);
+  }
+  100% {
+    transform: translateY(-2px) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Enhanced border styling */
+/* Improved visual depth */
+.classic-workspace-button.classic-active {
+  position: relative;
+}
+
+.classic-workspace-button.classic-active::before {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.1);
+}
+
+/* Responsive hover effects */
+@media (hover: hover) {
+  .classic-workspace-button.classic-inactive:hover {
+    filter: brightness(1.1);
+  }
+  
+  .classic-workspace-button.classic-inactive:hover svg {
+    transform: scale(1.1);
+  }
+}
+
+/* Enhanced context menu integration */
+.classic-workspace-button[data-state="open"] {
+  background: rgba(255,255,255,0.15) !important;
+  transform: translateY(-1px) scale(1.02);
+}
+
+/* Improved drag state styling */
+.classic-workspace-button.dragging {
+  opacity: 0.7;
+  transform: scale(1.1) rotate(2deg);
+  z-index: 100;
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.3));
+}
+
+/* Enhanced ring styling for drag over state */
+.classic-workspace-button.ring-2 {
+  ring-color: rgba(34, 211, 238, 0.8);
+  ring-offset-width: 1px;
+  ring-offset-color: rgba(255,255,255,0.1);
+}

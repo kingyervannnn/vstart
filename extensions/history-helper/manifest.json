@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Startpage History Suggestions Helper",
+  "version": "0.1.0",
+  "description": "Exposes browser history suggestions to the local startpage via custom events.",
+  "permissions": ["history"],
+  "host_permissions": ["http://localhost:3000/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "History Helper"
+  }
+}
+

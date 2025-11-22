@@ -1,0 +1,245 @@
+/* Cyber Tabs styling (legacy tight tabs look with dial fusion) */
+
+.tight-tabs-lite-container[data-tight-lite="true"] {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(6px, 1.1vw, 12px);
+  padding-left: 6px;
+  padding-right: 6px;
+  z-index: 6;
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"]::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite {
+  border-radius: 9999px;
+  min-width: 44px;
+  position: relative;
+  overflow: visible;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, color 0.2s ease;
+  will-change: transform, box-shadow, background;
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite svg {
+  position: relative;
+  z-index: 2;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite:hover svg {
+  transform: scale(1.05);
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite::before,
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite::after {
+  pointer-events: none;
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite--inactive {
+  filter: saturate(0.94);
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite--inactive:hover {
+  filter: saturate(1.05);
+  transform: translateY(-1px);
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite--inactive:hover::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: radial-gradient(
+    120% 140% at 50% -10%,
+    var(--cyber-tab-accent, rgba(34, 211, 238, 0.35)) 0%,
+    rgba(34, 211, 238, 0) 75%
+  );
+  opacity: 0.45;
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite--active {
+  z-index: 8;
+  transform: translateY(-1px);
+  filter: saturate(1.05);
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite--active::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: -6px;
+  height: 6px;
+  background: inherit;
+  border-top-left-radius: 999px;
+  border-top-right-radius: 999px;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 -8px 20px rgba(8, 10, 18, 0.45),
+    0 -3px 8px rgba(0, 0, 0, 0.28);
+  opacity: 0.95;
+  z-index: -1;
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite--active::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      120% 140% at 50% -20%,
+      var(--cyber-tab-accent-strong, rgba(34, 211, 238, 0.5)) 0%,
+      rgba(34, 211, 238, 0) 78%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.06) 46%, rgba(255, 255, 255, 0) 100%);
+  opacity: 0.88;
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite--active svg {
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+}
+
+.tight-tabs-lite-container[data-tight-lite="true"] .tight-tab-lite:focus-visible {
+  outline: 2px solid var(--cyber-tab-outline, rgba(255, 255, 255, 0.6));
+  outline-offset: 3px;
+}
+
+/* Tight Tabs basic styling (no top glow) */
+
+.tight-tab-basic {
+  position: relative;
+  background-color: transparent !important;
+  overflow: visible;
+}
+
+.tight-tab-basic::before {
+  content: '';
+  position: absolute;
+  inset: 8px 0 0 0; /* push glow down off the top edge */
+  border-radius: inherit;
+  background:
+    radial-gradient(135% 190% at 50% 150%, var(--tight-basic-accent, rgba(255,255,255,0.22)) 0%, var(--tight-basic-soft, rgba(255,255,255,0.06)) 50%, rgba(0,0,0,0) 90%);
+  mask-image: linear-gradient(180deg, transparent 0%, transparent 35%, black 65%, black 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 35%, black 65%, black 100%);
+  background-position: center 90%;
+  background-size: 150% 180%;
+  opacity: calc(var(--tight-basic-strength, 1) * 0.72);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.tight-tab-basic--inactive::before {
+  opacity: calc(var(--tight-basic-strength, 0.35) * 0.5);
+}
+
+/* Subtle top blend to remove the visible glow seam without altering shape */
+.tight-tab-basic::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: -1px;
+  height: 4px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.08) 100%);
+  opacity: 0.48;
+  pointer-events: none;
+  z-index: -2;
+}
+
+.tight-tab-basic:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.45);
+  outline-offset: 3px;
+}
+
+/* Tight Tabz enhanced fusion styling */
+
+.tight-tabz {
+  position: relative;
+  overflow: visible;
+  border-radius: inherit;
+  background-color: transparent !important;
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.tight-tabz::before,
+.tight-tabz::after {
+  pointer-events: none;
+}
+
+.tight-tabz--active {
+  filter: saturate(1.05);
+}
+
+.tight-tabz--inactive {
+  filter: saturate(0.92);
+}
+
+.tight-tabz--active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(130% 190% at 50% 140%, var(--tight-tabz-ambient, rgba(255,255,255,0.18)) 0%, rgba(0,0,0,0) 85%);
+  opacity: 0.8;
+  mix-blend-mode: screen;
+  z-index: -1;
+}
+
+.tight-tabz--active::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: -6px;
+  height: 6px;
+  border-top-left-radius: 999px;
+  border-top-right-radius: 999px;
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+  background: var(--tight-tabz-surface, rgba(12,14,22,0.95));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    0 -6px 20px rgba(6,8,16,0.55),
+    0 -3px 8px rgba(0,0,0,0.32);
+  z-index: -2;
+}
+
+.tight-tabz--inactive::before {
+  opacity: 0.45;
+}
+
+.tight-tabz:focus-visible {
+  outline: 2px solid rgba(255,255,255,0.45);
+  outline-offset: 3px;
+}

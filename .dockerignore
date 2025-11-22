@@ -1,0 +1,23 @@
+# Reduce build context size and speed up Docker builds
+.git
+.github
+.gitignore
+.DS_Store
+.vscode
+.idea
+node_modules
+dist
+build
+coverage
+.cache
+.eslintcache
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.env
+.env.*
+*.local
+**/.next
+**/out
+**/.turbo
+**/.pnpm-store

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo, useImperativeHandle, forwardRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Globe, ExternalLink, X, Bot, Check, Mic, Square, List, Link2, ChevronRight, ChevronDown, Brain, Sparkles, ArrowUp, ArrowDown, Pin, PinOff, Trash2, Plus, Copy, Pencil } from 'lucide-react'
+import { Search, Globe, ExternalLink, X, Bot, Check, Mic, Square, List, Link2, ChevronRight, ChevronDown, Brain, Sparkles, ArrowUp, ArrowDown, Pin, PinOff, Trash2, Plus, Copy, Pencil, Image as ImageIcon } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { resolveSearchBarBlurPx } from '../lib/blur-utils'
 // Lazy-load the transcriber only when voice is used to reduce initial bundle size
@@ -689,6 +689,14 @@ const SearchBox = forwardRef(({
     try { return localStorage.getItem('suggestProvider') || (settings?.search?.suggestProvider || 'duckduckgo') } catch { return settings?.search?.suggestProvider || 'duckduckgo' }
   })()
   const [inlineSearchMode, setInlineSearchMode] = useState(false)
+  const [inlineImageSearchEnabled, setInlineImageSearchEnabled] = useState(() => {
+    try {
+      const stored = localStorage.getItem('inlineImageSearchEnabled')
+      return stored === 'true'
+    } catch {
+      return false
+    }
+  })
   const [attachedImage, setAttachedImage] = useState(null)
   const [inputFocused, setInputFocused] = useState(false)
   const [isSearchBarHovered, setIsSearchBarHovered] = useState(false)
@@ -2877,6 +2885,17 @@ const SearchBox = forwardRef(({
       } else {
         items = await fetchSearxng()
         setInlineEngineLabel('SearXNG')
+      }
+
+      // Fetch images if inline image search is enabled
+      if (inlineImageSearchEnabled) {
+        try {
+          const images = await fetchSearxngImages(searchQuery)
+          setImageResults(images)
+        } catch (imgError) {
+          console.warn('Inline image search failed:', imgError)
+          setImageResults([])
+        }
       }
 
       const mapped = mapResults(items)

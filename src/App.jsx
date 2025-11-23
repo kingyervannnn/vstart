@@ -2219,7 +2219,42 @@ function App() {
     window.addEventListener("app-ai-web-searxng-base", onAiWebSearxngBase);
     window.addEventListener("app-set-header-color-mode", onHeaderMode);
     window.addEventListener("vstart-activate-license", onLicenseActivated);
+    
+    // Global drag-and-drop handlers for images - allow dropping images anywhere on the page
+    const handleGlobalDragOver = (e) => {
+      // Only prevent default if dragging files (images)
+      if (e?.dataTransfer?.types?.includes('Files')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    
+    const handleGlobalDrop = async (e) => {
+      try {
+        // Only handle if files are being dropped
+        if (!e?.dataTransfer?.files?.length) return;
+        
+        const files = Array.from(e.dataTransfer.files);
+        const imageFile = files.find(f => f.type.startsWith('image/'));
+        
+        if (imageFile && searchBoxRef.current?.attachImage) {
+          e.preventDefault();
+          e.stopPropagation();
+          await searchBoxRef.current.attachImage(imageFile);
+        }
+      } catch (error) {
+        console.error('Global image drop failed:', error);
+      }
+    };
+    
+    // Add global event listeners with capture phase to catch events before child handlers
+    document.addEventListener('dragover', handleGlobalDragOver, true);
+    document.addEventListener('drop', handleGlobalDrop, true);
+    
     return () => {
+      // Remove global drag-and-drop listeners
+      document.removeEventListener('dragover', handleGlobalDragOver, true);
+      document.removeEventListener('drop', handleGlobalDrop, true);
       window.removeEventListener("app-change-search-engine", onEng);
       window.removeEventListener("app-change-suggest-provider", onSuggestProv);
       window.removeEventListener("app-ai-change-model", onAiModel);

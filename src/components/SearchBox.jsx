@@ -3135,6 +3135,8 @@ const SearchBox = forwardRef(({
         performInlineImageSearch(attachedImage.file)
       } else {
         // Use external provider (Google Lens)
+        // Reset inline mode since we're doing external search
+        setInlineSearchMode(false)
         submitImageToLens(attachedImage.file, current)
         clearAttachedImage()
       }

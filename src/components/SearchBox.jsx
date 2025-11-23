@@ -3127,15 +3127,14 @@ const SearchBox = forwardRef(({
     const current = (inputRef.current?.value ?? query ?? '').trim()
     if (!current && !attachedImage?.file) return
 
-    // If an image is attached, handle based on inline mode and preferInline setting
+    // If an image is attached, handle based on inline image search enabled state
     if (attachedImage?.file) {
-      const preferInline = !!settings?.search?.imageSearch?.preferInline
-      // Show inline results if inline mode is active OR if preferInline is enabled
-      if ((inlineSearchMode || preferInline) && !current) {
-        // Show inline similar images when inline mode is active or preferInline is enabled
+      // Only do inline image search if the image icon is lit (inlineImageSearchEnabled is true)
+      // Otherwise, use external provider (Google Lens)
+      if (inlineImageSearchEnabled) {
         performInlineImageSearch(attachedImage.file)
       } else {
-        // Otherwise, use external provider (Yandex, API, or TinEye)
+        // Use external provider (Google Lens)
         submitImageToLens(attachedImage.file, current)
         clearAttachedImage()
       }

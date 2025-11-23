@@ -2985,12 +2985,14 @@ const SearchBox = ({
     const current = (inputRef.current?.value ?? query ?? '').trim()
     if (!current && !attachedImage?.file) return
 
-    // If an image is attached, send it to Google Reverse Image Search (and include text as context if present)
+    // If an image is attached, handle based on inline mode
     if (attachedImage?.file) {
-      if (!current) {
-        // Show inline similar images when no text provided
+      // Only show inline results if inline search mode is active
+      if (inlineSearchMode && !current) {
+        // Show inline similar images when inline mode is active and no text provided
         performInlineImageSearch(attachedImage.file)
       } else {
+        // Otherwise, directly open Google Images reverse search (with or without text)
         submitImageToLens(attachedImage.file, current)
         clearAttachedImage()
       }
@@ -3389,48 +3391,107 @@ const SearchBox = ({
   const submitImageToLens = async (file, queryText) => {
     try {
       const normalizedFile = file instanceof File ? file : new File([file], 'image.png', { type: 'image/png' })
-      const form = document.createElement('form')
-      form.action = 'https://www.google.com/searchbyimage/upload'
-      form.method = 'POST'
-      form.enctype = 'multipart/form-data'
-      form.acceptCharset = 'UTF-8'
-      form.target = '_blank'
-      form.style.display = 'none'
+      
+      // Try Bing Visual Search first (more permissive and Lens-like)
+      // If that fails, fall back to TinEye
+      try {
+        const form = document.createElement('form')
+        form.action = 'https://www.bing.com/images/search'
+        form.method = 'POST'
+        form.enctype = 'multipart/form-data'
+        form.acceptCharset = 'UTF-8'
+        form.target = '_blank'
+        form.style.display = 'none'
 
-      const fileInput = document.createElement('input')
-      fileInput.type = 'file'
-      fileInput.name = 'encoded_image'
-      // Use a uniquely named variable to avoid any TDZ/shadowing issues
-      const dataTransferObj = new DataTransfer()
-      dataTransferObj.items.add(normalizedFile)
-      fileInput.files = dataTransferObj.files
-      form.appendChild(fileInput)
+        // Add the image file
+        const fileInput = document.createElement('input')
+        fileInput.type = 'file'
+        fileInput.name = 'imageBin'
+        const dataTransferObj = new DataTransfer()
+        dataTransferObj.items.add(normalizedFile)
+        fileInput.files = dataTransferObj.files
+        form.appendChild(fileInput)
 
-      if (queryText && String(queryText).trim()) {
-        const q = document.createElement('input')
-        q.type = 'hidden'
-        q.name = 'q'
-        q.value = String(queryText).trim()
-        form.appendChild(q)
+        // Add query text if provided
+        if (queryText && String(queryText).trim()) {
+          const q = document.createElement('input')
+          q.type = 'hidden'
+          q.name = 'q'
+          q.value = String(queryText).trim()
+          form.appendChild(q)
+        }
+
+        // Force visual search mode
+        const mode = document.createElement('input')
+        mode.type = 'hidden'
+        mode.name = 'view'
+        mode.value = 'detailv2'
+        form.appendChild(mode)
+
+        const iss = document.createElement('input')
+        iss.type = 'hidden'
+        iss.name = 'iss'
+        iss.value = 'sbi'
+        form.appendChild(iss)
+
+        document.body.appendChild(form)
+        form.submit()
+        
+        setTimeout(() => { 
+          try { 
+            document.body.removeChild(form) 
+          } catch {} 
+        }, 2000)
+        
+        clearAttachedImage()
+        return
+      } catch (bingError) {
+        console.warn('Bing Visual Search failed, trying TinEye:', bingError)
+        
+        // Fallback to TinEye (specialized reverse image search)
+        const form = document.createElement('form')
+        form.action = 'https://www.tineye.com/search/'
+        form.method = 'POST'
+        form.enctype = 'multipart/form-data'
+        form.target = '_blank'
+        form.style.display = 'none'
+
+        const fileInput = document.createElement('input')
+        fileInput.type = 'file'
+        fileInput.name = 'image'
+        const dataTransferObj = new DataTransfer()
+        dataTransferObj.items.add(normalizedFile)
+        fileInput.files = dataTransferObj.files
+        form.appendChild(fileInput)
+
+        document.body.appendChild(form)
+        form.submit()
+        
+        setTimeout(() => { 
+          try { 
+            document.body.removeChild(form) 
+          } catch {} 
+        }, 2000)
+        
+        clearAttachedImage()
       }
-
-      const hl = document.createElement('input')
-      hl.type = 'hidden'
-      hl.name = 'hl'
-      hl.value = (navigator.language || 'en').split('-')[0]
-      form.appendChild(hl)
-
-      const src = document.createElement('input')
-      src.type = 'hidden'
-      src.name = 'sbisrc'
-      src.value = 'cr_ui'
-      form.appendChild(src)
-
-      document.body.appendChild(form)
-      form.submit()
-      setTimeout(() => { try { document.body.removeChild(form) } catch {} }, 2000)
     } catch (e) {
-      console.error('Image reverse search upload failed', e)
+      console.error('All reverse image search methods failed:', e)
+      // Last resort: just open Bing Visual Search page (user can upload manually)
+      try {
+        const visualSearchUrl = queryText && String(queryText).trim()
+          ? `https://www.bing.com/images/search?q=${encodeURIComponent(String(queryText).trim())}&view=detailv2`
+          : 'https://www.bing.com/images/search?view=detailv2'
+        
+        if (settings?.general?.openInNewTab) {
+          window.open(visualSearchUrl, '_blank', 'noopener,noreferrer')
+        } else {
+          window.location.href = visualSearchUrl
+        }
+        clearAttachedImage()
+      } catch (finalError) {
+        console.error('Final fallback also failed:', finalError)
+      }
     }
   }
 

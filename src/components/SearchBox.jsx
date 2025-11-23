@@ -5225,6 +5225,7 @@ const SearchBox = forwardRef(({
             ...(sbUseDefaultColor ? { color: '#ffffff', '--text-rgb': '255,255,255' } : null)
           }}
           ref={registerSearchContainer}
+          data-search-box="true"
           onDragOver={onDragOverContainer}
           onDrop={onDropContainer}
           onMouseEnter={handleSearchContainerMouseEnter}

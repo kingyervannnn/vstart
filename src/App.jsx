@@ -2222,10 +2222,18 @@ function App() {
     
     // Global drag-and-drop handlers for images - allow dropping images anywhere on the page
     const handleGlobalDragOver = (e) => {
-      // Only prevent default if dragging files (images)
+      // Only prevent default if dragging files (images) and not over search bar
       if (e?.dataTransfer?.types?.includes('Files')) {
-        e.preventDefault();
-        e.stopPropagation();
+        const target = e.target;
+        // Check if we're over the search bar or its children - if so, let it handle it
+        const isOverSearchBar = target?.closest?.('[data-search-box]') || 
+                                target?.closest?.('input[type="text"]') ||
+                                target?.closest?.('.search-container');
+        
+        if (!isOverSearchBar) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
       }
     };
     
@@ -2234,22 +2242,31 @@ function App() {
         // Only handle if files are being dropped
         if (!e?.dataTransfer?.files?.length) return;
         
-        const files = Array.from(e.dataTransfer.files);
-        const imageFile = files.find(f => f.type.startsWith('image/'));
+        const target = e.target;
+        // Check if we're dropping on the search bar or its children - if so, let it handle it
+        const isOverSearchBar = target?.closest?.('[data-search-box]') || 
+                                target?.closest?.('input[type="text"]') ||
+                                target?.closest?.('.search-container');
         
-        if (imageFile && searchBoxRef.current?.attachImage) {
-          e.preventDefault();
-          e.stopPropagation();
-          await searchBoxRef.current.attachImage(imageFile);
+        // If not over search bar, handle it globally
+        if (!isOverSearchBar) {
+          const files = Array.from(e.dataTransfer.files);
+          const imageFile = files.find(f => f.type.startsWith('image/'));
+          
+          if (imageFile && searchBoxRef.current?.attachImage) {
+            e.preventDefault();
+            e.stopPropagation();
+            await searchBoxRef.current.attachImage(imageFile);
+          }
         }
       } catch (error) {
         console.error('Global image drop failed:', error);
       }
     };
     
-    // Add global event listeners with capture phase to catch events before child handlers
-    document.addEventListener('dragover', handleGlobalDragOver, true);
-    document.addEventListener('drop', handleGlobalDrop, true);
+    // Add global event listeners - use bubble phase so search bar handlers run first
+    document.addEventListener('dragover', handleGlobalDragOver);
+    document.addEventListener('drop', handleGlobalDrop);
     
     return () => {
       // Remove global drag-and-drop listeners

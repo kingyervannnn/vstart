@@ -709,13 +709,21 @@ const SearchBox = forwardRef(({
         isImage: true
       }
     }
+    // If inline image search is enabled (from right-click on globe), show image icon
+    if (inlineImageSearchEnabled && inlineSearchMode) {
+      return {
+        icon: ImageIcon,
+        lit: true,
+        isImage: true
+      }
+    }
     // Otherwise show globe icon
     return {
       icon: Globe,
       lit: false,
       isImage: false
     }
-  }, [attachedImage?.file, inlineImageSearchEnabled])
+  }, [attachedImage?.file, inlineImageSearchEnabled, inlineSearchMode])
   const [inputFocused, setInputFocused] = useState(false)
   const [isSearchBarHovered, setIsSearchBarHovered] = useState(false)
   const [inputGlowPhase, setInputGlowPhase] = useState('idle') // 'idle' | 'focus' | 'typing'
@@ -2997,7 +3005,19 @@ const SearchBox = forwardRef(({
           if (selectedSuggestionIndex >= 0) {
             handleSuggestionSelect(suggestions[selectedSuggestionIndex])
           } else {
-            if (attachedImage?.file) handleSearch()
+            // If image is attached and image icon is lit → inline image search
+            if (attachedImage?.file && inlineImageSearchEnabled) {
+              performInlineImageSearch(attachedImage.file)
+            }
+            // If image is attached and image icon is unlit → external search (Google Lens)
+            else if (attachedImage?.file) {
+              handleSearch()
+            }
+            // If no image but image icon is showing (from right-click) → inline image search with text
+            else if (inlineModeIconState.isImage && query.trim()) {
+              performInlineSearch(query.trim())
+            }
+            // Otherwise normal search behavior
             else if (isAIMode) handleAIQuery()
             else handleSearch()
           }
@@ -3010,18 +3030,42 @@ const SearchBox = forwardRef(({
           break
         default:
           if (e.key === 'Enter') {
-            if (attachedImage?.file) handleSearch()
+            // If image is attached and image icon is lit → inline image search
+            if (attachedImage?.file && inlineImageSearchEnabled) {
+              performInlineImageSearch(attachedImage.file)
+            }
+            // If image is attached and image icon is unlit → external search (Google Lens)
+            else if (attachedImage?.file) {
+              handleSearch()
+            }
+            // If no image but image icon is showing (from right-click) → inline image search with text
+            else if (inlineModeIconState.isImage && query.trim()) {
+              performInlineSearch(query.trim())
+            }
+            // Otherwise normal search behavior
             else if (isAIMode) handleAIQuery()
             else handleSearch()
           }
           break
       }
     } else if (e.key === 'Enter') {
-      if (attachedImage?.file) handleSearch()
+      // If image is attached and image icon is lit → inline image search
+      if (attachedImage?.file && inlineImageSearchEnabled) {
+        performInlineImageSearch(attachedImage.file)
+      }
+      // If image is attached and image icon is unlit → external search (Google Lens)
+      else if (attachedImage?.file) {
+        handleSearch()
+      }
+      // If no image but image icon is showing (from right-click) → inline image search with text
+      else if (inlineModeIconState.isImage && query.trim()) {
+        performInlineSearch(query.trim())
+      }
+      // Otherwise normal search behavior
       else if (isAIMode) handleAIQuery()
       else handleSearch()
     }
-  }, [showSuggestions, suggestions, selectedSuggestionIndex, handleSuggestionSelect, toggleAIMode, attachedImage, isAIMode])
+  }, [showSuggestions, suggestions, selectedSuggestionIndex, handleSuggestionSelect, toggleAIMode, attachedImage, isAIMode, inlineImageSearchEnabled, inlineModeIconState, query, performInlineImageSearch, performInlineSearch, handleSearch, handleAIQuery])
 
   // Hide suggestions when clicking outside
   useEffect(() => {
@@ -3423,16 +3467,25 @@ const SearchBox = forwardRef(({
       try {
         localStorage.setItem('inlineImageSearchEnabled', String(newValue))
       } catch {}
+      // If right-clicking on globe icon (no image), enable inline mode and show image icon
+      if (!attachedImage?.file && !inlineSearchMode && settings?.search?.inlineEnabled !== false) {
+        setInlineSearchMode(true)
+      }
       return
     }
     
-    // Left-click with image attached: perform inline reverse image search
-    if (attachedImage?.file) {
-      performInlineImageSearch(attachedImage.file)
+    // Left-click: toggle states only, never perform search
+    // If image icon is showing (attached or from right-click), toggle lit state
+    if (inlineModeIconState.isImage) {
+      const newValue = !inlineImageSearchEnabled
+      setInlineImageSearchEnabled(newValue)
+      try {
+        localStorage.setItem('inlineImageSearchEnabled', String(newValue))
+      } catch {}
       return
     }
     
-    // Left-click: toggle inline search mode
+    // Left-click on globe icon: toggle inline search mode
     if (isPinned && showInlineResults) {
       setShowInlineResults(false)
       setIsPinned(false)

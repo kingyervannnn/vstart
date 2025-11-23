@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo, useImperativeHandle, forwardRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Globe, ExternalLink, X, Bot, Check, Mic, Square, List, Link2, ChevronRight, ChevronDown, Brain, Sparkles, ArrowUp, ArrowDown, Pin, PinOff, Trash2, Plus, Copy, Pencil } from 'lucide-react'
 import { createPortal } from 'react-dom'
@@ -672,7 +672,7 @@ class SearchSuggestionsService {
   }
 }
 
-const SearchBox = ({
+const SearchBox = forwardRef(({
   settings,
   workspaces = [],
   activeWorkspaceId,
@@ -680,7 +680,7 @@ const SearchBox = ({
   urlWorkspaceId,
   searchBarBlurPx: searchBarBlurPxOverride,
   suggestionsBlurPx: suggestionsBlurPxOverride,
-}) => {
+}, ref) => {
   const [query, setQuery] = useState('')
   const [engine, setEngine] = useState(() => {
     try { return localStorage.getItem('searchEngine') || (settings?.search?.engine || 'google') } catch { return settings?.search?.engine || 'google' }
@@ -3414,19 +3414,16 @@ const SearchBox = ({
 
   const handleFileUpload = () => {}
 
-  const onDragOverContainer = (e) => {
-    try { if (e?.dataTransfer?.types?.includes('Files')) e.preventDefault() } catch {}
-  }
-  const onDropContainer = async (e) => {
+  // Function to attach an image from a File object (exposed via ref)
+  const attachImageFromFile = useCallback(async (file) => {
     try {
-      e.preventDefault()
-      const files = Array.from(e.dataTransfer?.files || [])
-      const img = files.find(f => /^image\//.test(f.type))
-      if (!img) return
+      if (!file || !(file instanceof File)) return
+      if (!/^image\//.test(file.type)) return
+      
       const preview = await new Promise((resolve) => {
         const reader = new FileReader()
         reader.onload = () => resolve(reader.result)
-        reader.readAsDataURL(img)
+        reader.readAsDataURL(file)
       })
       const makeThumb = (src) => new Promise((resolve) => {
         const im = new Image()
@@ -3444,11 +3441,31 @@ const SearchBox = ({
         im.src = src
       })
       const thumb = await makeThumb(preview)
-      setAttachedImage({ file: img, preview: thumb })
+      setAttachedImage({ file, preview: thumb })
+    } catch (error) {
+      console.error('Failed to attach image:', error)
+    }
+  }, [])
+
+  const onDragOverContainer = (e) => {
+    try { if (e?.dataTransfer?.types?.includes('Files')) e.preventDefault() } catch {}
+  }
+  const onDropContainer = async (e) => {
+    try {
+      e.preventDefault()
+      const files = Array.from(e.dataTransfer?.files || [])
+      const img = files.find(f => /^image\//.test(f.type))
+      if (!img) return
+      await attachImageFromFile(img)
     } catch {}
   }
 
   const clearAttachedImage = () => setAttachedImage(null)
+  
+  // Expose attachImageFromFile via ref
+  useImperativeHandle(ref, () => ({
+    attachImage: attachImageFromFile
+  }), [attachImageFromFile])
 
   const submitImageToLens = async (file, queryText) => {
     try {
@@ -5777,6 +5794,8 @@ const SearchBox = ({
       `}</style>
     </>
   )
-}
+})
+
+SearchBox.displayName = 'SearchBox'
 
 export default SearchBox

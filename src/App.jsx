@@ -204,6 +204,7 @@ function App() {
   const globalBackgroundObjectUrlRef = useRef(null);
   const [workspaceBackgrounds, setWorkspaceBackgrounds] = useState({});
   const workspaceBackgroundsRef = useRef({});
+  const searchBoxRef = useRef(null);
   const [settings, setSettings] = useState({
     ai: {
       enabled: true,
@@ -4943,6 +4944,7 @@ function App() {
             }}
           >
             <SearchBox
+              ref={searchBoxRef}
               settings={runtimeSettings}
               workspaces={workspaces}
               activeWorkspaceId={activeWorkspaceId}

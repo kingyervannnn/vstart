@@ -779,8 +779,17 @@ function App() {
       }
       const aiRaw = localStorage.getItem("aiSettings");
       if (aiRaw) {
-        const ai = JSON.parse(aiRaw);
-        setSettings((prev) => ({ ...prev, ai: { ...(prev.ai || {}), ...ai } }));
+        try {
+          const ai = JSON.parse(aiRaw);
+          // Preserve enabled state from localStorage if it exists
+          if (typeof ai.enabled === 'boolean') {
+            setSettings((prev) => ({ ...prev, ai: { ...(prev.ai || {}), ...ai, enabled: ai.enabled } }));
+          } else {
+            setSettings((prev) => ({ ...prev, ai: { ...(prev.ai || {}), ...ai } }));
+          }
+        } catch (e) {
+          console.warn('Failed to parse aiSettings from localStorage:', e);
+        }
       }
       const sRaw = localStorage.getItem("searchSettings");
       if (sRaw) {

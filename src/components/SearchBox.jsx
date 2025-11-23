@@ -4969,6 +4969,30 @@ const SearchBox = forwardRef(({
                       </div>
                     ) : (
                       <div className="results-list-container">
+                        {/* Show images grid if images are available and inline image search is enabled */}
+                        {inlineImageSearchEnabled && imageResults.length > 0 && (
+                          <div className="mb-6">
+                            <div className="text-white/80 text-sm mb-3 font-medium">Images</div>
+                            <div className="image-grid">
+                              {imageResults.slice(0, 20).map((item, idx) => (
+                                <a
+                                  key={idx}
+                                  href={item.url}
+                                  target={settings.general?.openInNewTab ? "_blank" : "_self"}
+                                  rel={settings.general?.openInNewTab ? "noopener noreferrer" : undefined}
+                                  className="image-card"
+                                  onClick={() => addHistoryEntry({ title: item.title, url: item.url })}
+                                  onContextMenu={(e) => openLinkContextMenu(e, item.url, item.title)}
+                                  title={item.title}
+                                >
+                                  <img src={item.image} alt={item.title} className="image-thumb" />
+                                  <div className="image-caption">{item.displayUrl}</div>
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {/* Web results */}
                         <div className="results-list">
                           {searchResults.map((result, index) => (
                             <motion.div
@@ -5252,6 +5276,23 @@ const SearchBox = forwardRef(({
         >
             <div ref={handleInputRowRef} className="flex items-center p-3 relative" style={enforcedRowStyle}>
               <div className={`flex items-center gap-2 flex-1 transition-all duration-200 ${isRecording ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                {inlineSearchMode && !isAIMode ? (
+                  <div className="relative mr-3">
+                    <button
+                      onClick={() => {
+                        const newValue = !inlineImageSearchEnabled
+                        setInlineImageSearchEnabled(newValue)
+                        try {
+                          localStorage.setItem('inlineImageSearchEnabled', String(newValue))
+                        } catch {}
+                      }}
+                      className={`p-1 transition-colors ${inlineImageSearchEnabled ? 'text-cyan-400 hover:text-cyan-300' : 'text-white/60 hover:text-white/80'}`}
+                      title={inlineImageSearchEnabled ? 'Disable image search in results' : 'Enable image search in results'}
+                    >
+                      <ImageIcon className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : null}
                 {isAIMode ? (
                   <div className="relative mr-3">
                     <button

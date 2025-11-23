@@ -698,6 +698,24 @@ const SearchBox = forwardRef(({
     }
   })
   const [attachedImage, setAttachedImage] = useState(null)
+  
+  // Determine what icon to show for inline mode button
+  const inlineModeIconState = useMemo(() => {
+    // If image is attached, show image icon (lit if inline image search enabled, unlit otherwise)
+    if (attachedImage?.file) {
+      return {
+        icon: ImageIcon,
+        lit: inlineImageSearchEnabled,
+        isImage: true
+      }
+    }
+    // Otherwise show globe icon
+    return {
+      icon: Globe,
+      lit: false,
+      isImage: false
+    }
+  }, [attachedImage?.file, inlineImageSearchEnabled])
   const [inputFocused, setInputFocused] = useState(false)
   const [isSearchBarHovered, setIsSearchBarHovered] = useState(false)
   const [inputGlowPhase, setInputGlowPhase] = useState('idle') // 'idle' | 'focus' | 'typing'
@@ -3395,7 +3413,26 @@ const SearchBox = forwardRef(({
     aiAbortRef.current = null
   }
 
-  const toggleInlineSearchMode = () => {
+  const toggleInlineSearchMode = (e) => {
+    // Right-click: toggle inline image search mode
+    if (e?.button === 2 || e?.ctrlKey || e?.metaKey) {
+      e?.preventDefault()
+      e?.stopPropagation()
+      const newValue = !inlineImageSearchEnabled
+      setInlineImageSearchEnabled(newValue)
+      try {
+        localStorage.setItem('inlineImageSearchEnabled', String(newValue))
+      } catch {}
+      return
+    }
+    
+    // Left-click with image attached: perform inline reverse image search
+    if (attachedImage?.file) {
+      performInlineImageSearch(attachedImage.file)
+      return
+    }
+    
+    // Left-click: toggle inline search mode
     if (isPinned && showInlineResults) {
       setShowInlineResults(false)
       setIsPinned(false)
@@ -3476,6 +3513,10 @@ const SearchBox = forwardRef(({
       const img = files.find(f => /^image\//.test(f.type))
       if (!img) return
       await attachImageFromFile(img)
+      // When image is dropped, enable inline mode if not already enabled
+      if (!inlineSearchMode && settings?.search?.inlineEnabled !== false) {
+        setInlineSearchMode(true)
+      }
     } catch {}
   }
 
@@ -4615,15 +4656,33 @@ const SearchBox = forwardRef(({
                   </div>
                 ) : (
                   <button
-                    onClick={toggleInlineSearchMode}
+                    onClick={(e) => toggleInlineSearchMode(e)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      toggleInlineSearchMode(e)
+                    }}
                     className={`p-1 transition-colors ${
-                      inlineSearchMode 
-                        ? 'text-cyan-400 hover:text-cyan-300' 
-                        : 'text-white/60 hover:text-white'
+                      inlineModeIconState.isImage
+                        ? (inlineModeIconState.lit ? 'text-cyan-400 hover:text-cyan-300' : 'text-white/60 hover:text-white/80')
+                        : (inlineSearchMode 
+                            ? 'text-cyan-400 hover:text-cyan-300' 
+                            : 'text-white/60 hover:text-white')
                     }`}
-                    title={inlineSearchMode ? "Inline search mode active" : "Click to enable inline search"}
+                    title={
+                      inlineModeIconState.isImage
+                        ? (inlineModeIconState.lit 
+                            ? 'Image search enabled - Left-click: reverse image search | Right-click: disable image search'
+                            : 'Image attached - Left-click: reverse image search | Right-click: enable image search')
+                        : (inlineSearchMode 
+                            ? "Inline search mode active - Right-click: enable image search" 
+                            : "Click to enable inline search - Right-click: enable image search")
+                    }
                   >
-                    <Globe className="w-5 h-5" />
+                    {inlineModeIconState.isImage ? (
+                      <ImageIcon className="w-5 h-5" />
+                    ) : (
+                      <Globe className="w-5 h-5" />
+                    )}
                   </button>
                 )}
 
@@ -5276,23 +5335,6 @@ const SearchBox = forwardRef(({
         >
             <div ref={handleInputRowRef} className="flex items-center p-3 relative" style={enforcedRowStyle}>
               <div className={`flex items-center gap-2 flex-1 transition-all duration-200 ${isRecording ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                {inlineSearchMode && !isAIMode ? (
-                  <div className="relative mr-3">
-                    <button
-                      onClick={() => {
-                        const newValue = !inlineImageSearchEnabled
-                        setInlineImageSearchEnabled(newValue)
-                        try {
-                          localStorage.setItem('inlineImageSearchEnabled', String(newValue))
-                        } catch {}
-                      }}
-                      className={`p-1 transition-colors ${inlineImageSearchEnabled ? 'text-cyan-400 hover:text-cyan-300' : 'text-white/60 hover:text-white/80'}`}
-                      title={inlineImageSearchEnabled ? 'Disable image search in results' : 'Enable image search in results'}
-                    >
-                      <ImageIcon className="w-5 h-5" />
-                    </button>
-                  </div>
-                ) : null}
                 {isAIMode ? (
                   <div className="relative mr-3">
                     <button
@@ -5357,15 +5399,33 @@ const SearchBox = forwardRef(({
                   </div>
                 ) : (
                   <button
-                    onClick={toggleInlineSearchMode}
+                    onClick={(e) => toggleInlineSearchMode(e)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      toggleInlineSearchMode(e)
+                    }}
                     className={`p-1 transition-colors ${
-                      inlineSearchMode 
-                        ? 'text-cyan-400 hover:text-cyan-300' 
-                        : 'text-white/60 hover:text-white'
+                      inlineModeIconState.isImage
+                        ? (inlineModeIconState.lit ? 'text-cyan-400 hover:text-cyan-300' : 'text-white/60 hover:text-white/80')
+                        : (inlineSearchMode 
+                            ? 'text-cyan-400 hover:text-cyan-300' 
+                            : 'text-white/60 hover:text-white')
                     }`}
-                    title={inlineSearchMode ? "Inline search mode active" : "Click to enable inline search"}
+                    title={
+                      inlineModeIconState.isImage
+                        ? (inlineModeIconState.lit 
+                            ? 'Image search enabled - Left-click: reverse image search | Right-click: disable image search'
+                            : 'Image attached - Left-click: reverse image search | Right-click: enable image search')
+                        : (inlineSearchMode 
+                            ? "Inline search mode active - Right-click: enable image search" 
+                            : "Click to enable inline search - Right-click: enable image search")
+                    }
                   >
-                    <Globe className="w-5 h-5" />
+                    {inlineModeIconState.isImage ? (
+                      <ImageIcon className="w-5 h-5" />
+                    ) : (
+                      <Globe className="w-5 h-5" />
+                    )}
                   </button>
                 )}
 

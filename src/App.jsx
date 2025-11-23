@@ -2923,13 +2923,17 @@ function App() {
             ? overrides[targetId] || baseAppearance
             : baseAppearance;
         const nextAppearance = mutator(currentAppearance) || currentAppearance;
+        // When editing master override, ensure we merge with base to preserve all properties
+        const finalAppearance = isMasterTarget && nextAppearance !== currentAppearance
+          ? { ...baseAppearance, ...nextAppearance }
+          : nextAppearance;
         const nextState = {
           ...state,
           lastSelectedId: workspaceId || targetId,
         };
         const applyEverywhere = isMasterTarget;
         if (
-          nextAppearance === currentAppearance &&
+          finalAppearance === currentAppearance &&
           !applyEverywhere &&
           nextState.lastSelectedId === state.lastSelectedId &&
           nextState.enabled === state.enabled &&
@@ -2944,7 +2948,7 @@ function App() {
               ...nextState,
               overrides: {
                 ...overrides,
-                [MASTER_APPEARANCE_ID]: nextAppearance,
+                [MASTER_APPEARANCE_ID]: finalAppearance,
               },
             },
           };
@@ -2954,13 +2958,13 @@ function App() {
             ...prev,
             appearanceWorkspaces: {
               ...nextState,
-              overrides: { ...overrides, [targetId]: nextAppearance },
+              overrides: { ...overrides, [targetId]: finalAppearance },
             },
           };
         }
         return {
           ...prev,
-          appearance: nextAppearance,
+          appearance: finalAppearance,
           appearanceWorkspaces: nextState,
         };
       });

@@ -401,6 +401,12 @@ function App() {
       engine: "google",
       suggestProvider: "searxng",
       inlineEnabled: true,
+      imgbbApiKey: "",
+      imageSearch: {
+        inlineProvider: "searxng", // "searxng" only
+        externalProvider: "google-lens", // "google-lens" | "searxng"
+        preferInline: false,
+      },
     },
     general: {
       openInNewTab: false,
@@ -1994,6 +2000,53 @@ function App() {
           searxngBaseUrl: String(e.detail || "/searxng"),
         },
       }));
+      const onImgbbApiKey = (e) => {
+        console.log('onImgbbApiKey handler called with:', e.detail ? e.detail.substring(0, 10) + '...' : 'empty')
+        setSettings((prev) => {
+          const newSettings = {
+            ...prev,
+            search: {
+              ...(prev.search || {}),
+              imgbbApiKey: String(e.detail || ""),
+            },
+          }
+          console.log('Settings updated, imgbbApiKey:', newSettings.search?.imgbbApiKey ? newSettings.search.imgbbApiKey.substring(0, 10) + '...' : 'empty')
+          return newSettings
+        })
+      }
+    const onImageSearchInlineProvider = (e) =>
+      setSettings((prev) => ({
+        ...prev,
+        search: {
+          ...(prev.search || {}),
+          imageSearch: {
+            ...(prev.search?.imageSearch || {}),
+            inlineProvider: String(e.detail || "searxng"), // "searxng" only
+          },
+        },
+      }));
+    const onImageSearchExternalProvider = (e) =>
+      setSettings((prev) => ({
+        ...prev,
+        search: {
+          ...(prev.search || {}),
+          imageSearch: {
+            ...(prev.search?.imageSearch || {}),
+            externalProvider: String(e.detail || "google-lens"),
+          },
+        },
+      }));
+    const onImageSearchPreferInline = (e) =>
+      setSettings((prev) => ({
+        ...prev,
+        search: {
+          ...(prev.search || {}),
+          imageSearch: {
+            ...(prev.search?.imageSearch || {}),
+            preferInline: !!e.detail,
+          },
+        },
+      }));
     const onSearxngSuggestBase = (e) =>
       setSettings((prev) => ({
         ...prev,
@@ -2144,6 +2197,10 @@ function App() {
       "app-search-suggest-searxng-base",
       onSearxngSuggestBase,
     );
+    window.addEventListener("app-search-imgbb-apikey", onImgbbApiKey);
+    window.addEventListener("app-image-search-inline-provider", onImageSearchInlineProvider);
+    window.addEventListener("app-image-search-external-provider", onImageSearchExternalProvider);
+    window.addEventListener("app-image-search-prefer-inline", onImageSearchPreferInline);
     window.addEventListener("app-inline-searxng-base", onInlineSearxngBase);
     window.addEventListener("app-inline-custom-base", onInlineCustomBase);
     window.addEventListener("app-suggest-custom-base", onSuggestCustomBase);
@@ -2226,6 +2283,10 @@ function App() {
         "app-search-suggest-searxng-base",
         onSearxngSuggestBase,
       );
+      window.removeEventListener("app-search-imgbb-apikey", onImgbbApiKey);
+      window.removeEventListener("app-image-search-inline-provider", onImageSearchInlineProvider);
+      window.removeEventListener("app-image-search-external-provider", onImageSearchExternalProvider);
+      window.removeEventListener("app-image-search-prefer-inline", onImageSearchPreferInline);
       window.removeEventListener(
         "app-inline-searxng-base",
         onInlineSearxngBase,

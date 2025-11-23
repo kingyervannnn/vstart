@@ -1665,15 +1665,76 @@ const SearchBox = ({
     setShowInlineResults(true)
     setIsPinned(true)
     setInlineContentType('images')
-    setInlineEngineLabel('SearXNG Images')
     setImageResults([])
+    
+    const inlineProvider = settings?.search?.imageSearch?.inlineProvider || 'searxng'
+    
     try {
-      const labels = await classifyImageLabels(file)
-      const label = labels && labels.length ? labels[0] : ''
-      if (label) setQuery(label)
-      const q = label || 'similar images'
-      const imgs = await fetchSearxngImages(q)
-      setImageResults(imgs)
+      // SearXNG (default and only inline provider)
+      setInlineEngineLabel('SearXNG Images')
+        const labels = await classifyImageLabels(file)
+        // Use top 3-5 labels for better visual similarity matching
+        const topLabels = labels.slice(0, 5).filter(Boolean)
+        
+        let allResults = []
+        
+        if (topLabels.length > 0) {
+          // Use the first label for query display
+          const primaryLabel = topLabels[0]
+          setQuery(primaryLabel)
+          
+          // Search with primary label first
+          try {
+            const primaryResults = await fetchSearxngImages(primaryLabel)
+            allResults = [...allResults, ...primaryResults]
+          } catch (e) {
+            console.warn('Primary label search failed:', e)
+          }
+          
+          // Search with combined labels (top 3) for better visual matches
+          if (topLabels.length >= 2) {
+            const combinedQuery = topLabels.slice(0, 3).join(' ')
+            try {
+              const combinedResults = await fetchSearxngImages(combinedQuery)
+              // Merge results, avoiding duplicates
+              const existingUrls = new Set(allResults.map(r => r.url))
+              const uniqueResults = combinedResults.filter(r => !existingUrls.has(r.url))
+              allResults = [...allResults, ...uniqueResults]
+            } catch (e) {
+              console.warn('Combined labels search failed:', e)
+            }
+          }
+          
+          // Also try individual secondary labels for more diversity
+          if (topLabels.length > 1) {
+            for (const label of topLabels.slice(1, 4)) {
+              try {
+                const labelResults = await fetchSearxngImages(label)
+                const existingUrls = new Set(allResults.map(r => r.url))
+                const uniqueResults = labelResults.filter(r => !existingUrls.has(r.url))
+                allResults = [...allResults, ...uniqueResults.slice(0, 5)] // Limit per label
+              } catch (e) {
+                console.warn(`Label "${label}" search failed:`, e)
+              }
+            }
+          }
+        } else {
+          // Fallback: generic similar images search
+          const genericResults = await fetchSearxngImages('similar images')
+          allResults = genericResults
+        }
+        
+        // Limit total results and remove duplicates by URL
+        const seenUrls = new Set()
+        const uniqueResults = []
+        for (const result of allResults) {
+          if (!seenUrls.has(result.url) && uniqueResults.length < 30) {
+            seenUrls.add(result.url)
+            uniqueResults.push(result)
+          }
+        }
+        
+        setImageResults(uniqueResults)
     } catch (e) {
       console.error('Inline image search failed:', e)
       setImageResults([])
@@ -2985,14 +3046,15 @@ const SearchBox = ({
     const current = (inputRef.current?.value ?? query ?? '').trim()
     if (!current && !attachedImage?.file) return
 
-    // If an image is attached, handle based on inline mode
+    // If an image is attached, handle based on inline mode and preferInline setting
     if (attachedImage?.file) {
-      // Only show inline results if inline search mode is active
-      if (inlineSearchMode && !current) {
-        // Show inline similar images when inline mode is active and no text provided
+      const preferInline = !!settings?.search?.imageSearch?.preferInline
+      // Show inline results if inline mode is active OR if preferInline is enabled
+      if ((inlineSearchMode || preferInline) && !current) {
+        // Show inline similar images when inline mode is active or preferInline is enabled
         performInlineImageSearch(attachedImage.file)
       } else {
-        // Otherwise, directly open Google Images reverse search (with or without text)
+        // Otherwise, use external provider (Yandex, API, or TinEye)
         submitImageToLens(attachedImage.file, current)
         clearAttachedImage()
       }
@@ -3390,108 +3452,339 @@ const SearchBox = ({
 
   const submitImageToLens = async (file, queryText) => {
     try {
-      const normalizedFile = file instanceof File ? file : new File([file], 'image.png', { type: 'image/png' })
+      let imageFile = file instanceof File ? file : new File([file], 'image.png', { type: 'image/png' })
       
-      // Try Bing Visual Search first (more permissive and Lens-like)
-      // If that fails, fall back to TinEye
-      try {
-        const form = document.createElement('form')
-        form.action = 'https://www.bing.com/images/search'
-        form.method = 'POST'
-        form.enctype = 'multipart/form-data'
-        form.acceptCharset = 'UTF-8'
-        form.target = '_blank'
-        form.style.display = 'none'
-
-        // Add the image file
-        const fileInput = document.createElement('input')
-        fileInput.type = 'file'
-        fileInput.name = 'imageBin'
-        const dataTransferObj = new DataTransfer()
-        dataTransferObj.items.add(normalizedFile)
-        fileInput.files = dataTransferObj.files
-        form.appendChild(fileInput)
-
-        // Add query text if provided
-        if (queryText && String(queryText).trim()) {
-          const q = document.createElement('input')
-          q.type = 'hidden'
-          q.name = 'q'
-          q.value = String(queryText).trim()
-          form.appendChild(q)
+      // Compress/resize large images to reduce upload size
+      // For OpenWeb Ninja GET requests, we need very small images to avoid 414 URI too large
+      // Base64 encoding increases size by ~33%, so we need to keep original < 50KB for GET requests
+      const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB target for POST fallback
+      const COMPRESS_THRESHOLD = 50 * 1024 // Compress if > 50KB (very aggressive for GET requests)
+      const MAX_DIMENSION = 800 // max width or height (very small to keep base64 < 150KB)
+      
+      // Always compress if image is large enough and is an image file
+      if (imageFile.size > COMPRESS_THRESHOLD && imageFile.type.startsWith('image/')) {
+        try {
+          const img = new Image()
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          
+          const imageUrl = URL.createObjectURL(imageFile)
+          await new Promise((resolve, reject) => {
+            img.onload = () => {
+              try {
+                let { width, height } = img
+                
+                // Resize if too large
+                if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                  const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height)
+                  width = Math.round(width * ratio)
+                  height = Math.round(height * ratio)
+                }
+                
+                canvas.width = width
+                canvas.height = height
+                ctx.drawImage(img, 0, 0, width, height)
+                
+                // Progressive quality reduction until we hit target size
+                // For OpenWeb Ninja GET requests, we need very small files (< 50KB to keep base64 < 100KB)
+                const TARGET_SIZE_FOR_GET = 40 * 1024 // 40KB target (base64 will be ~53KB)
+                const tryCompress = (quality, attempts = 0) => {
+                  if (attempts > 10) {
+                    // Give up after 10 attempts and use the best we have
+                    URL.revokeObjectURL(imageUrl)
+                    resolve()
+                    return
+                  }
+                  
+                  canvas.toBlob((blob) => {
+                    try {
+                      if (blob) {
+                        // Always use compressed version if original was too large, or if compressed is smaller
+                        const shouldUseCompressed = imageFile.size > COMPRESS_THRESHOLD || blob.size < imageFile.size
+                        
+                        if (shouldUseCompressed) {
+                          imageFile = new File([blob], (imageFile.name || 'image').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
+                          console.log(`Image compressed: ${Math.round(imageFile.size / 1024)}KB (${width}x${height}, quality: ${Math.round(quality * 100)}%)`)
+                          
+                          // If still too large for GET requests and quality can be reduced further, try again
+                          if (imageFile.size > TARGET_SIZE_FOR_GET && quality > 0.3) {
+                            const newQuality = Math.max(0.3, quality - 0.1)
+                            tryCompress(newQuality, attempts + 1)
+                            return
+                          }
+                          // Also check if still too large for POST fallback
+                          if (imageFile.size > MAX_FILE_SIZE && quality > 0.3) {
+                            const newQuality = Math.max(0.3, quality - 0.1)
+                            tryCompress(newQuality, attempts + 1)
+                            return
+                          }
+                        }
+                      }
+                      URL.revokeObjectURL(imageUrl)
+                      resolve()
+                    } catch (err) {
+                      URL.revokeObjectURL(imageUrl)
+                      reject(err)
+                    }
+                  }, 'image/jpeg', quality)
+                }
+                
+                // Start with lower quality (0.7) for more aggressive compression
+                tryCompress(0.7)
+              } catch (err) {
+                URL.revokeObjectURL(imageUrl)
+                reject(err)
+              }
+            }
+            img.onerror = () => {
+              URL.revokeObjectURL(imageUrl)
+              reject(new Error('Failed to load image'))
+            }
+            img.src = imageUrl
+          })
+        } catch (compressError) {
+          console.warn('Image compression failed, using original:', compressError)
+          // Continue with original file if compression fails
         }
-
-        // Force visual search mode
-        const mode = document.createElement('input')
-        mode.type = 'hidden'
-        mode.name = 'view'
-        mode.value = 'detailv2'
-        form.appendChild(mode)
-
-        const iss = document.createElement('input')
-        iss.type = 'hidden'
-        iss.name = 'iss'
-        iss.value = 'sbi'
-        form.appendChild(iss)
-
-        document.body.appendChild(form)
-        form.submit()
+      }
+      
+      const externalProvider = settings?.search?.imageSearch?.externalProvider || 'google-lens'
+      const searxngBase = normalizeSearxngBase(settings?.search?.searxngBaseUrl, '/searxng')
+      
+      // Check if using Google Lens
+      if (externalProvider === 'google-lens') {
+        console.log('submitImageToLens - Using Google Lens, Image size:', Math.round(imageFile.size / 1024), 'KB')
         
-        setTimeout(() => { 
-          try { 
-            document.body.removeChild(form) 
-          } catch {} 
-        }, 2000)
+        try {
+          // Upload image via server (which will try to upload to public hosting)
+          const uploadFormData = new FormData()
+          uploadFormData.append('image', imageFile)
+          // Include imgbb API key if available
+          // Try multiple ways to get the API key (in case settings structure is different)
+          const imgbbApiKey = settings?.search?.imgbbApiKey || 
+                              settings?.imgbbApiKey || 
+                              (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('settings') || '{}')?.search?.imgbbApiKey : '') ||
+                              ''
+          
+          console.log('ImgBB API key check:', { 
+            hasKey: !!imgbbApiKey, 
+            keyLength: imgbbApiKey ? imgbbApiKey.length : 0,
+            keyPrefix: imgbbApiKey ? imgbbApiKey.substring(0, 10) + '...' : 'none',
+            fromSettings: !!settings?.search?.imgbbApiKey,
+            fromRoot: !!settings?.imgbbApiKey,
+            settingsKeys: settings ? Object.keys(settings) : [],
+            searchKeys: settings?.search ? Object.keys(settings.search) : []
+          })
+          
+          if (imgbbApiKey && String(imgbbApiKey).trim()) {
+            uploadFormData.append('imgbbApiKey', String(imgbbApiKey).trim())
+            console.log('✅ Added imgbbApiKey to form data')
+          } else {
+            console.warn('⚠️ No imgbbApiKey found! Please enter it in Settings → General → Image Search')
+          }
+          
+          console.log('Uploading to /upload-for-lens, API key present:', !!imgbbApiKey && String(imgbbApiKey).trim().length > 0)
+          
+          // Try direct connection first (bypass Vite proxy if possible)
+          let uploadResponse
+          try {
+            uploadResponse = await fetch('http://127.0.0.1:3300/upload-for-lens', {
+              method: 'POST',
+              body: uploadFormData,
+            })
+            console.log('Direct connection to server succeeded')
+          } catch (directError) {
+            console.log('Direct connection failed, trying Vite proxy:', directError.message)
+            // Fallback to Vite proxy
+            uploadResponse = await fetch('/upload-for-lens', {
+              method: 'POST',
+              body: uploadFormData,
+            })
+          }
+          
+          console.log('Upload response status:', uploadResponse.status, uploadResponse.statusText)
+          
+          if (!uploadResponse.ok) {
+            throw new Error(`Upload failed: ${uploadResponse.status}`)
+          }
+          
+          const uploadData = await uploadResponse.json()
+          
+          if (!uploadData.success) {
+            throw new Error(uploadData.error || 'Upload failed')
+          }
+          
+          // Check if we got a public URL
+          if (uploadData.public && uploadData.url) {
+            // Public URL from image hosting service
+            const lensUrl = `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(uploadData.url)}`
+            console.log('Opening Google Lens with public URL:', lensUrl)
+            
+            if (settings?.general?.openInNewTab) {
+              window.open(lensUrl, '_blank', 'noopener,noreferrer')
+            } else {
+              window.location.href = lensUrl
+            }
+            clearAttachedImage()
+            return
+          } else if (uploadData.needsPublicUrl) {
+            // Server returned local URL - Google Lens can't access it
+            throw new Error('Public image hosting not configured. Please set IMGBB_API_KEY environment variable on the server, or upload manually to Google Lens.')
+          }
+          
+          throw new Error('No public URL returned from server')
+        } catch (lensError) {
+          console.error('Google Lens upload failed:', lensError)
+          
+          // Final fallback: Open Google Lens with instructions
+          const lensUrl = 'https://lens.google.com/'
+          if (settings?.general?.openInNewTab) {
+            window.open(lensUrl, '_blank', 'noopener,noreferrer')
+          } else {
+            window.location.href = lensUrl
+          }
+          
+          alert('Google Lens opened. Please upload your image manually:\n1. Click the camera/upload icon\n2. Select your image\n\nReason: ' + lensError.message + '\n\nTip: To enable automatic upload, set IMGBB_API_KEY environment variable on your server.')
+          clearAttachedImage()
+          return
+        }
+      }
+      
+      // Check if using SearXNG for reverse image search
+      if (externalProvider === 'searxng') {
+        console.log('submitImageToLens - Using SearXNG, Image size:', Math.round(imageFile.size / 1024), 'KB')
         
+        try {
+          // SearXNG reverse image search: Use image_url parameter with data URL
+          // Convert image to data URL for SearXNG
+          const imageDataUrl = await readFileToDataURL(imageFile)
+          
+          // SearXNG reverse image search: GET with image_url parameter
+          const params = new URLSearchParams({
+            image_url: imageDataUrl,
+            format: 'json',
+            categories: 'images'
+          })
+          
+          const searxngResponse = await fetch(`${searxngBase}/search?${params.toString()}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+          })
+          
+          if (!searxngResponse.ok) {
+            // If GET fails, try POST with multipart form
+            console.log('SearXNG GET failed, trying POST with multipart form')
+            const searxngFormData = new FormData()
+            searxngFormData.append('file', imageFile)
+            searxngFormData.append('format', 'json')
+            searxngFormData.append('categories', 'images')
+            
+            const searxngPostResponse = await fetch(`${searxngBase}/search`, {
+              method: 'POST',
+              body: searxngFormData,
+            })
+            
+            if (!searxngPostResponse.ok) {
+              throw new Error(`SearXNG error: ${searxngPostResponse.status}`)
+            }
+            
+            const searxngData = await searxngPostResponse.json()
+            console.log('SearXNG reverse image search response (POST):', searxngData)
+            
+            // Open SearXNG results page with the image
+            const searxngResultsUrl = `${searxngBase}/?image_url=${encodeURIComponent(imageDataUrl)}`
+            if (settings?.general?.openInNewTab) {
+              window.open(searxngResultsUrl, '_blank', 'noopener,noreferrer')
+            } else {
+              window.location.href = searxngResultsUrl
+            }
+            clearAttachedImage()
+            return
+          }
+          
+          const searxngData = await searxngResponse.json()
+          console.log('SearXNG reverse image search response (GET):', searxngData)
+          
+          // SearXNG returns results in data.results array
+          if (searxngData.results && Array.isArray(searxngData.results) && searxngData.results.length > 0) {
+            // Open SearXNG results page with the image
+            const searxngResultsUrl = `${searxngBase}/?image_url=${encodeURIComponent(imageDataUrl)}`
+            if (settings?.general?.openInNewTab) {
+              window.open(searxngResultsUrl, '_blank', 'noopener,noreferrer')
+            } else {
+              window.location.href = searxngResultsUrl
+            }
+            clearAttachedImage()
+            return
+          } else {
+            // No results, fall back to direct providers
+            console.warn('SearXNG returned no results, falling back to direct provider')
+            // Fall through to direct provider logic below
+          }
+        } catch (searxngError) {
+          console.warn('SearXNG reverse image search failed, falling back to direct provider:', searxngError)
+          // Fall through to direct provider logic below
+        }
+      }
+      
+      // If we get here, SearXNG failed and we don't have a valid provider
+      console.error('submitImageToLens - No valid external provider or all providers failed')
+      alert('Reverse image search failed. Please try again or check your settings.')
+      clearAttachedImage()
+      return
+      
+      const response = await fetch('/image-search/search', {
+        method: 'POST',
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        let errorMessage = `Server error: ${response.status}`
+        if (response.status === 413) {
+          errorMessage = 'Image file is too large. Please use an image smaller than 50MB, or compress/resize it before uploading.'
+        } else {
+          const errorData = await response.json().catch(() => ({ error: errorMessage }))
+          errorMessage = errorData.error || errorMessage
+        }
+        console.error('Image search proxy error:', { status: response.status, error: errorMessage })
+        alert(`Reverse image search failed: ${errorMessage}. Check console for details.`)
         clearAttachedImage()
         return
-      } catch (bingError) {
-        console.warn('Bing Visual Search failed, trying TinEye:', bingError)
+      }
+      
+      const data = await response.json()
+      console.log('Image search proxy response:', data)
+      
+      if (data.success && data.redirectUrl) {
+        // Redirect to the results page
+        if (settings?.general?.openInNewTab) {
+          window.open(data.redirectUrl, '_blank', 'noopener,noreferrer')
+        } else {
+          window.location.href = data.redirectUrl
+        }
+        clearAttachedImage()
+      } else if (data.success && data.results && Array.isArray(data.results) && data.results.length > 0) {
+        // Future: Display results inline
+        // For now, redirect to provider's results page
+        const fallbackUrl = data.provider === 'openwebninja' 
+          ? 'https://www.openwebninja.com/results'
+          : 'https://www.tineye.com/search/'
         
-        // Fallback to TinEye (specialized reverse image search)
-        const form = document.createElement('form')
-        form.action = 'https://www.tineye.com/search/'
-        form.method = 'POST'
-        form.enctype = 'multipart/form-data'
-        form.target = '_blank'
-        form.style.display = 'none'
-
-        const fileInput = document.createElement('input')
-        fileInput.type = 'file'
-        fileInput.name = 'image'
-        const dataTransferObj = new DataTransfer()
-        dataTransferObj.items.add(normalizedFile)
-        fileInput.files = dataTransferObj.files
-        form.appendChild(fileInput)
-
-        document.body.appendChild(form)
-        form.submit()
-        
-        setTimeout(() => { 
-          try { 
-            document.body.removeChild(form) 
-          } catch {} 
-        }, 2000)
-        
+        if (settings?.general?.openInNewTab) {
+          window.open(fallbackUrl, '_blank', 'noopener,noreferrer')
+        } else {
+          window.location.href = fallbackUrl
+        }
+        clearAttachedImage()
+      } else {
+        console.error('Image search returned unsuccessful result:', data)
+        alert(`Reverse image search failed: ${data.error || 'Unknown error'}. Check console for details.`)
         clearAttachedImage()
       }
     } catch (e) {
-      console.error('All reverse image search methods failed:', e)
-      // Last resort: just open Bing Visual Search page (user can upload manually)
-      try {
-        const visualSearchUrl = queryText && String(queryText).trim()
-          ? `https://www.bing.com/images/search?q=${encodeURIComponent(String(queryText).trim())}&view=detailv2`
-          : 'https://www.bing.com/images/search?view=detailv2'
-        
-        if (settings?.general?.openInNewTab) {
-          window.open(visualSearchUrl, '_blank', 'noopener,noreferrer')
-        } else {
-          window.location.href = visualSearchUrl
-        }
-        clearAttachedImage()
-      } catch (finalError) {
-        console.error('Final fallback also failed:', finalError)
-      }
+      console.error('Reverse image search failed:', e)
+      alert(`Reverse image search failed: ${e.message}. Check console for details.`)
+      clearAttachedImage()
     }
   }
 

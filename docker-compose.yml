@@ -14,6 +14,7 @@ services:
       - ai-api
       - icons-api
       - stt-api
+      - image-search-api
     volumes:
       - ./src:/app/src:ro
       - ./public:/app/public:ro
@@ -48,6 +49,25 @@ services:
     container_name: vivaldi-ai-api
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3200/ai/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  image-search-api:
+    image: node:18-alpine
+    working_dir: /app
+    command: sh -c "npm install form-data@^4.0.1 --save && node server/image-search-server.mjs"
+    environment:
+      - IMAGE_SEARCH_PORT=3300
+      - IMGBB_API_KEY=${IMGBB_API_KEY:-}
+    ports:
+      - "3300:3300"
+    volumes:
+      - ./server:/app/server:ro
+    restart: unless-stopped
+    container_name: vivaldi-image-search-api
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3300/image-search/health || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5

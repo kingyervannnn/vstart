@@ -12,6 +12,8 @@ export default defineConfig({
     },
   },
   server: {
+    // Increase body size limit for image uploads
+    // Vite uses http-proxy-middleware which has no default body size limit
     proxy: {
       // Voice API (local Node proxy for STT/TTS)
       '/api': {
@@ -23,6 +25,66 @@ export default defineConfig({
         target: 'http://127.0.0.1:8090',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/stt/, ''),
+      },
+      // Image search proxy server
+      '/image-search': {
+        target: 'http://127.0.0.1:3300',
+        changeOrigin: true,
+        timeout: 60000, // 60 second timeout for large uploads
+        ws: false, // Disable websocket proxying
+        configure: (proxy, _options) => {
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            // Preserve all headers
+            const headers = req.headers
+            Object.keys(headers).forEach(key => {
+              if (headers[key]) {
+                proxyReq.setHeader(key, headers[key])
+              }
+            })
+            // Ensure Content-Length is set if present
+            if (req.headers['content-length']) {
+              proxyReq.setHeader('Content-Length', req.headers['content-length'])
+            }
+          })
+          proxy.on('error', (err, req, res) => {
+            console.error('Proxy error:', err.message)
+          })
+        },
+      },
+      // Lens image serving (for Google Lens public URLs)
+      '/lens-image': {
+        target: 'http://127.0.0.1:3300',
+        changeOrigin: true,
+        timeout: 30000,
+      },
+      // Upload for lens endpoint - proxy to image search server
+      '/upload-for-lens': {
+        target: 'http://127.0.0.1:3300',
+        changeOrigin: true,
+        timeout: 60000,
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            // Preserve all headers for multipart form data
+            const headers = req.headers
+            Object.keys(headers).forEach(key => {
+              if (headers[key] && key.toLowerCase() !== 'host') {
+                proxyReq.setHeader(key, headers[key])
+              }
+            })
+            // Ensure Content-Length is set if present
+            if (req.headers['content-length']) {
+              proxyReq.setHeader('Content-Length', req.headers['content-length'])
+            }
+            console.log(`[Vite Proxy] Forwarding ${req.method} ${req.url} to http://127.0.0.1:3300${req.url}`)
+          })
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            console.log(`[Vite Proxy] Response: ${proxyRes.statusCode} for ${req.url}`)
+          })
+          proxy.on('error', (err, req, res) => {
+            console.error('[Vite Proxy] Error:', err.message)
+          })
+        },
       },
     },
   },

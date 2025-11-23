@@ -169,7 +169,7 @@ const SettingsButton = ({
   const [showSettings, setShowSettings] = useState(false)
   const [aiModels, setAiModels] = useState([])
   const [aiModel, setAiModel] = useState('')
-  const [provStatus, setProvStatus] = useState({ lmstudio: 'idle', openai: 'idle', openrouter: 'idle' })
+  const [provStatus, setProvStatus] = useState({ lmstudio: 'idle', openai: 'idle', openrouter: 'idle', openwebninja: 'idle' })
   const [showMemoryModal, setShowMemoryModal] = useState(false)
   const [memoryDraft, setMemoryDraft] = useState(settings?.ai?.memoryContent || '')
   // Controlled drafts so inputs reflect persisted values after reload
@@ -429,10 +429,62 @@ const SettingsButton = ({
       setProvStatus({
         lmstudio: (settings?.ai?.lmstudioBaseUrl ? (st.lmstudio?.ok ? 'ok' : (st.lmstudio?.ok === false ? 'fail' : 'idle')) : 'idle'),
         openai: (settings?.ai?.openaiApiKey ? (st.openai?.ok ? 'ok' : (st.openai?.ok === false ? 'fail' : 'idle')) : 'idle'),
-        openrouter: (settings?.ai?.openrouterApiKey ? (st.openrouter?.ok ? 'ok' : (st.openrouter?.ok === false ? 'fail' : 'idle')) : 'idle')
+        openrouter: (settings?.ai?.openrouterApiKey ? (st.openrouter?.ok ? 'ok' : (st.openrouter?.ok === false ? 'fail' : 'idle')) : 'idle'),
+        imgbb: provStatus.imgbb || 'idle'
       })
     } catch {
       setProvStatus(prev => ({ ...prev }))
+    }
+  }
+
+  // Validate ImgBB API key
+  const validateImgbbKey = async (apiKey) => {
+    if (!apiKey || !String(apiKey).trim()) {
+      setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
+      return
+    }
+    
+    setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
+    
+    try {
+      const key = String(apiKey).trim()
+      console.log('Validating ImgBB API key via server:', { keyPrefix: key.substring(0, 10) + '...' })
+      
+      // Use server-side validation endpoint to avoid CORS issues
+      let response
+      try {
+        // Try direct server connection first
+        response = await fetch('http://127.0.0.1:3300/image-search/validate-imgbb-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: key }),
+        })
+      } catch (directError) {
+        // Fallback to proxy
+        response = await fetch('/image-search/validate-imgbb-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: key }),
+        })
+      }
+      
+      if (response.ok) {
+        const result = await response.json()
+        if (result.valid) {
+          console.log('✅ ImgBB API key validated successfully!')
+          setProvStatus(prev => ({ ...prev, imgbb: 'ok' }))
+        } else {
+          console.warn('❌ ImgBB API key validation failed:', result.error)
+          setProvStatus(prev => ({ ...prev, imgbb: 'fail' }))
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+        console.error('❌ ImgBB validation request failed:', errorData)
+        setProvStatus(prev => ({ ...prev, imgbb: 'fail' }))
+      }
+    } catch (err) {
+      console.error('ImgBB API key validation error:', err)
+      setProvStatus(prev => ({ ...prev, imgbb: 'fail' }))
     }
   }
 
@@ -442,6 +494,17 @@ const SettingsButton = ({
     // run once per mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Validate ImgBB API key on mount if it exists
+  useEffect(() => {
+    if (settings?.search?.imgbbApiKey && String(settings.search.imgbbApiKey).trim()) {
+      const t = setTimeout(() => {
+        validateImgbbKey(settings.search.imgbbApiKey)
+      }, 1500)
+      return () => clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.search?.imgbbApiKey])
 
   return (
     <>
@@ -1243,6 +1306,127 @@ const SettingsButton = ({
                           )}
                         </div>
                       )}
+                    </div>
+                    {/* Image Search */}
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-white text-sm font-medium">Image Search</div>
+                          <div className="text-white/60 text-xs mt-1">
+                            Configure reverse image search providers for inline and external searches
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div className="flex gap-2 items-center">
+                          <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>Inline provider</span>
+                          <select
+                            defaultValue={settings?.search?.imageSearch?.inlineProvider || 'searxng'}
+                            onChange={(e) => window.dispatchEvent(new CustomEvent('app-image-search-inline-provider', { detail: e.target.value }))}
+                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                          >
+                            <option value="searxng">SearXNG</option>
+                          </select>
+                        </div>
+                        
+                        <div className="flex gap-2 items-center">
+                          <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>External provider</span>
+                          <select
+                            defaultValue={settings?.search?.imageSearch?.externalProvider || 'google-lens'}
+                            onChange={(e) => window.dispatchEvent(new CustomEvent('app-image-search-external-provider', { detail: e.target.value }))}
+                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                          >
+                            <option value="google-lens">Google Lens</option>
+                            <option value="searxng">SearXNG (aggregated)</option>
+                          </select>
+                        </div>
+                        
+                        {/* ImgBB API Key for Google Lens */}
+                        <div className="text-white/70 text-xs mb-1" style={{minWidth:'8rem'}}>Google Lens (ImgBB)</div>
+                        <div className="flex gap-2 items-center">
+                          <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>API key</span>
+                          <input
+                            type="text"
+                            value={settings?.search?.imgbbApiKey || ''}
+                            onChange={(e) => {
+                              // Update immediately for better UX and persistence
+                              const key = e.target.value
+                              console.log('ImgBB API key onChange:', key.substring(0, 10) + '...')
+                              // Dispatch event to update settings (which triggers localStorage save)
+                              const event = new CustomEvent('app-search-imgbb-apikey', { detail: key })
+                              window.dispatchEvent(event)
+                              console.log('Event dispatched, checking if handler exists...')
+                              // Validate after a short delay (only if key looks complete)
+                              if (key && String(key).trim().length > 10) {
+                                setTimeout(() => validateImgbbKey(key), 500)
+                              } else {
+                                setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const key = e.target.value
+                              // Ensure it's saved one more time on blur
+                              window.dispatchEvent(new CustomEvent('app-search-imgbb-apikey', { detail: key }))
+                              if (key && String(key).trim()) {
+                                validateImgbbKey(key)
+                              } else {
+                                setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
+                              }
+                            }}
+                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                            placeholder="Required for Google Lens. Get free key from api.imgbb.com"
+                          />
+                          {String(settings?.search?.imgbbApiKey || '').trim() && (
+                            provStatus.imgbb === 'ok' ? <Check className="w-4 h-4 text-green-400" /> : (provStatus.imgbb === 'fail' ? <X className="w-4 h-4 text-red-400" /> : <span className="w-4 h-4 animate-pulse text-white/50">⏳</span>)
+                          )}
+                          <button
+                            onClick={() => {
+                              const key = settings?.search?.imgbbApiKey
+                              if (key) {
+                                console.log('Manual ImgBB API key test triggered')
+                                validateImgbbKey(key)
+                              } else {
+                                alert('Please enter an API key first')
+                              }
+                            }}
+                            className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white/80"
+                            title="Test API key connection"
+                          >
+                            Test
+                          </button>
+                        </div>
+                        {provStatus.imgbb === 'fail' && (
+                          <div className="text-red-400 text-[10px] mt-1">
+                            Validation failed. Check browser console (F12) for details. Verify your API key at api.imgbb.com
+                          </div>
+                        )}
+                        {provStatus.imgbb === 'idle' && String(settings?.search?.imgbbApiKey || '').trim() && (
+                          <div className="text-white/50 text-[10px] mt-1">
+                            Validation in progress...
+                          </div>
+                        )}
+                        {provStatus.imgbb === 'ok' && (
+                          <div className="text-green-400 text-[10px] mt-1">
+                            ✓ API key validated successfully
+                          </div>
+                        )}
+                        <div className="text-white/50 text-[10px]">
+                          Free image hosting for Google Lens. Server: api.imgbb.com (fixed, no configuration needed). <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">Get free API key</a>
+                        </div>
+                        
+                        <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                          <div>
+                            <span className="text-white/80 text-xs">Prefer inline results</span>
+                            <div className="text-white/50 text-[10px] mt-0.5">Show image results inline regardless of inline toggle state</div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={!!settings?.search?.imageSearch?.preferInline}
+                            onChange={(e) => window.dispatchEvent(new CustomEvent('app-image-search-prefer-inline', { detail: !!e.target.checked }))}
+                          />
+                        </label>
+                      </div>
                     </div>
                   </div>
                   </div>

@@ -2222,18 +2222,17 @@ function App() {
     
     // Global drag-and-drop handlers for images - allow dropping images anywhere on the page
     const handleGlobalDragOver = (e) => {
-      // Only prevent default if dragging files (images) and not over search bar
-      if (e?.dataTransfer?.types?.includes('Files')) {
-        const target = e.target;
-        // Check if we're over the search bar or its children - if so, let it handle it
-        const isOverSearchBar = target?.closest?.('[data-search-box]') || 
-                                target?.closest?.('input[type="text"]') ||
-                                target?.closest?.('.search-container');
-        
-        if (!isOverSearchBar) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
+      // Only handle if dragging files (images)
+      if (!e?.dataTransfer?.types?.includes('Files')) return;
+      
+      const target = e.target;
+      // Check if we're over the search bar or its children - if so, let it handle it
+      const isOverSearchBar = target?.closest?.('[data-search-box]');
+      
+      // If not over search bar, allow drop by preventing default
+      if (!isOverSearchBar) {
+        e.preventDefault();
+        e.stopPropagation();
       }
     };
     
@@ -2244,9 +2243,7 @@ function App() {
         
         const target = e.target;
         // Check if we're dropping on the search bar or its children - if so, let it handle it
-        const isOverSearchBar = target?.closest?.('[data-search-box]') || 
-                                target?.closest?.('input[type="text"]') ||
-                                target?.closest?.('.search-container');
+        const isOverSearchBar = target?.closest?.('[data-search-box]');
         
         // If not over search bar, handle it globally
         if (!isOverSearchBar) {
@@ -2264,9 +2261,10 @@ function App() {
       }
     };
     
-    // Add global event listeners - use bubble phase so search bar handlers run first
-    document.addEventListener('dragover', handleGlobalDragOver);
-    document.addEventListener('drop', handleGlobalDrop);
+    // Add global event listeners - use capture phase to catch before other handlers
+    // but check if target is search bar to avoid interfering
+    document.addEventListener('dragover', handleGlobalDragOver, true);
+    document.addEventListener('drop', handleGlobalDrop, true);
     
     return () => {
       // Remove global drag-and-drop listeners

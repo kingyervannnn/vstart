@@ -5,6 +5,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs'
 import { FONT_PRESET_DEFINITIONS } from '../lib/theme-tokens'
 import BackgroundManager from './BackgroundManager'
 
+// Version from package.json - update this when releasing new versions
+const APP_VERSION = '1.0.0'
+
 const SettingsButton = ({
   onBackgroundChange,
   currentBackground,
@@ -2902,6 +2905,20 @@ const SettingsButton = ({
                   onFocusCapture={preserveScroll}
                 >
                   <div className="space-y-4">
+                    {/* Version Info */}
+                    <div className="bg-white/5 border border-white/15 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-white text-sm font-semibold mb-1">VSTART</div>
+                          <div className="text-white/60 text-xs">Vivaldi Hybrid Start Page</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-white/80 text-sm font-medium">Version</div>
+                          <div className="text-cyan-400 text-lg font-bold">{APP_VERSION}</div>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Support card with Buy me a coffee */}
                     <div className="bg-gradient-to-r from-cyan-600/40 via-fuchsia-600/35 to-purple-700/30 border border-cyan-300/30 rounded-lg p-4 shadow-lg">
                       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

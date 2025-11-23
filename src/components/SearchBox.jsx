@@ -3472,6 +3472,10 @@ const SearchBox = forwardRef(({
       if (!attachedImage?.file && !inlineSearchMode && settings?.search?.inlineEnabled !== false) {
         setInlineSearchMode(true)
       }
+      // If right-clicking on active image icon (lit), disable inline mode and return to globe icon
+      else if (inlineModeIconState.isImage && inlineImageSearchEnabled && !attachedImage?.file) {
+        setInlineSearchMode(false)
+      }
       return
     }
     

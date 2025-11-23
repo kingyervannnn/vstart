@@ -3065,7 +3065,7 @@ const SearchBox = forwardRef(({
       else if (isAIMode) handleAIQuery()
       else handleSearch()
     }
-  }, [showSuggestions, suggestions, selectedSuggestionIndex, handleSuggestionSelect, toggleAIMode, attachedImage, isAIMode, inlineImageSearchEnabled, inlineModeIconState, query, performInlineImageSearch, performInlineSearch, handleSearch, handleAIQuery])
+  }, [showSuggestions, suggestions, selectedSuggestionIndex, handleSuggestionSelect, toggleAIMode, attachedImage?.file, isAIMode, inlineImageSearchEnabled, inlineModeIconState.isImage, query])
 
   // Hide suggestions when clicking outside
   useEffect(() => {

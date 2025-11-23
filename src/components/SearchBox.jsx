@@ -3464,6 +3464,7 @@ const SearchBox = forwardRef(({
       e?.preventDefault()
       e?.stopPropagation()
       const newValue = !inlineImageSearchEnabled
+      const wasEnabled = inlineImageSearchEnabled
       setInlineImageSearchEnabled(newValue)
       try {
         localStorage.setItem('inlineImageSearchEnabled', String(newValue))
@@ -3472,8 +3473,8 @@ const SearchBox = forwardRef(({
       if (!attachedImage?.file && !inlineSearchMode && settings?.search?.inlineEnabled !== false) {
         setInlineSearchMode(true)
       }
-      // If right-clicking on active image icon (lit), disable inline mode and return to globe icon
-      else if (inlineModeIconState.isImage && inlineImageSearchEnabled && !attachedImage?.file) {
+      // If right-clicking on active image icon (was lit, now unlit), disable inline mode and return to globe icon
+      else if (!attachedImage?.file && wasEnabled && inlineSearchMode) {
         setInlineSearchMode(false)
       }
       return

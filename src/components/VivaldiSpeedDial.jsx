@@ -3818,13 +3818,13 @@ function ExperimentalDial({
                             }
                             return
                           }
-                          if (editMode) return
+                          // Allow folder navigation in edit mode (edit mode persists)
                           if (isFolder) {
                             setOpenFolder(t)
                             setFolderPage(0)
                             setFolderBlur(true)
                             setTimeout(() => setFolderBlur(false), 250)
-                          } else if (t.url) {
+                          } else if (!editMode && t.url) {
                             const nu = normalizeUrl(t.url)
                             const href = nu ? nu.href : t.url
                             if (settings?.general?.openInNewTab) window.open(href, '_blank', 'noopener,noreferrer')

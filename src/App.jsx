@@ -164,6 +164,22 @@ const resolveAppearanceWorkspaceTargetId = (
   return normalized;
 };
 
+// Helper to deep merge appearance profiles (handles nested objects like 'inline')
+const deepMergeAppearance = (base, override) => {
+  if (!override) return base;
+  const merged = { ...base };
+  for (const key in override) {
+    if (override[key] && typeof override[key] === 'object' && !Array.isArray(override[key])) {
+      // Deep merge nested objects (like 'inline')
+      merged[key] = deepMergeAppearance(base[key] || {}, override[key]);
+    } else {
+      // Override primitive values and arrays
+      merged[key] = override[key];
+    }
+  }
+  return merged;
+};
+
 const resolveAppearanceProfileForWorkspace = (
   baseAppearance,
   state,
@@ -176,20 +192,22 @@ const resolveAppearanceProfileForWorkspace = (
   if (workspaceId === MASTER_APPEARANCE_ID) {
     return masterOverride || baseAppearance;
   }
-  const baseEffective = masterOverride || baseAppearance;
+  const baseEffective = masterOverride ? deepMergeAppearance(baseAppearance, masterOverride) : baseAppearance;
   if (
     !workspaceId ||
     workspaceId === DEFAULT_APPEARANCE_WORKSPACE_ID ||
     (anchoredWorkspaceId && workspaceId === anchoredWorkspaceId)
   ) {
-    // For default/anchored workspaces, merge default override on top of master override
+    // For default/anchored workspaces, deep merge default override on top of master override
     const defaultOverride = overrides[DEFAULT_APPEARANCE_WORKSPACE_ID];
     if (defaultOverride) {
-      return { ...baseEffective, ...defaultOverride };
+      return deepMergeAppearance(baseEffective, defaultOverride);
     }
     return baseEffective;
   }
-  if (overrides[workspaceId]) return overrides[workspaceId];
+  if (overrides[workspaceId]) {
+    return deepMergeAppearance(baseEffective, overrides[workspaceId]);
+  }
   return baseEffective;
 };
 

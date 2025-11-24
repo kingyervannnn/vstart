@@ -182,7 +182,12 @@ const resolveAppearanceProfileForWorkspace = (
     workspaceId === DEFAULT_APPEARANCE_WORKSPACE_ID ||
     (anchoredWorkspaceId && workspaceId === anchoredWorkspaceId)
   ) {
-    return overrides[DEFAULT_APPEARANCE_WORKSPACE_ID] || baseEffective;
+    // For default/anchored workspaces, merge default override on top of master override
+    const defaultOverride = overrides[DEFAULT_APPEARANCE_WORKSPACE_ID];
+    if (defaultOverride) {
+      return { ...baseEffective, ...defaultOverride };
+    }
+    return baseEffective;
   }
   if (overrides[workspaceId]) return overrides[workspaceId];
   return baseEffective;
@@ -1296,6 +1301,9 @@ function App() {
     [settings.appearanceWorkspaces],
   );
   const appearanceWorkspacesEnabled = !!appearanceWorkspacesState.enabled;
+  
+  // Create ref for applyAppearanceEdit early so handlers can use it
+  const applyAppearanceEditRef = useRef(null);
   const appearanceApplyAllChoiceRef = useRef(null);
   const resolveWorkspaceScopedToggle = useCallback(
     (baseValue, map, workspaceId) => {
@@ -1950,58 +1958,135 @@ function App() {
           inlineFirecrawlApiKey: String(e.detail || ""),
         },
       }));
-    const onInlineAppearanceTheme = (e) =>
-      setSettings((prev) => ({
-        ...prev,
-        appearance: {
-          ...(prev.appearance || {}),
-          inline: {
-            ...(prev.appearance?.inline || {}),
-            theme: String(e.detail || "terminal"),
+    const onInlineAppearanceTheme = (e) => {
+      const theme = String(e.detail || "terminal");
+      setSettings((prev) => {
+        const state = normalizeAppearanceWorkspaceState(prev.appearanceWorkspaces);
+        if (state?.enabled && applyAppearanceEditRef.current) {
+          // Use applyAppearanceEdit to update workspace-specific appearance
+          applyAppearanceEditRef.current((appearanceProfile) => ({
+            ...(appearanceProfile || {}),
+            inline: {
+              ...(appearanceProfile?.inline || {}),
+              theme,
+            },
+          }));
+          return prev;
+        }
+        return {
+          ...prev,
+          appearance: {
+            ...(prev.appearance || {}),
+            inline: {
+              ...(prev.appearance?.inline || {}),
+              theme,
+            },
           },
-        },
-      }));
-    const onInlineAppearanceSlugColor = (e) =>
-      setSettings((prev) => ({
-        ...prev,
-        appearance: {
-          ...(prev.appearance || {}),
-          inline: {
-            ...(prev.appearance?.inline || {}),
-            useWorkspaceSlugTextColor: !!e.detail,
+        };
+      });
+    };
+    const onInlineAppearanceSlugColor = (e) => {
+      const useSlugColor = !!e.detail;
+      setSettings((prev) => {
+        const state = normalizeAppearanceWorkspaceState(prev.appearanceWorkspaces);
+        if (state?.enabled && applyAppearanceEditRef.current) {
+          // Use applyAppearanceEdit to update workspace-specific appearance
+          applyAppearanceEditRef.current((appearanceProfile) => ({
+            ...(appearanceProfile || {}),
+            inline: {
+              ...(appearanceProfile?.inline || {}),
+              useWorkspaceSlugTextColor: useSlugColor,
+            },
+          }));
+          return prev;
+        }
+        return {
+          ...prev,
+          appearance: {
+            ...(prev.appearance || {}),
+            inline: {
+              ...(prev.appearance?.inline || {}),
+              useWorkspaceSlugTextColor: useSlugColor,
+            },
           },
-        },
-      }));
-    const onInlineAppearanceOutline = (e) =>
-      setSettings((prev) => ({
-        ...prev,
-        appearance: {
-          ...(prev.appearance || {}),
-          inline: { ...(prev.appearance?.inline || {}), outline: !!e.detail },
-        },
-      }));
-    const onInlineAppearanceFull = (e) =>
-      setSettings((prev) => ({
-        ...prev,
-        appearance: {
-          ...(prev.appearance || {}),
-          inline: {
-            ...(prev.appearance?.inline || {}),
-            fullPinnedSearch: !!e.detail,
+        };
+      });
+    };
+    const onInlineAppearanceOutline = (e) => {
+      const outline = !!e.detail;
+      setSettings((prev) => {
+        const state = normalizeAppearanceWorkspaceState(prev.appearanceWorkspaces);
+        if (state?.enabled && applyAppearanceEditRef.current) {
+          applyAppearanceEditRef.current((appearanceProfile) => ({
+            ...(appearanceProfile || {}),
+            inline: {
+              ...(appearanceProfile?.inline || {}),
+              outline,
+            },
+          }));
+          return prev;
+        }
+        return {
+          ...prev,
+          appearance: {
+            ...(prev.appearance || {}),
+            inline: { ...(prev.appearance?.inline || {}), outline },
           },
-        },
-      }));
-    const onInlineAppearanceReturn = (e) =>
-      setSettings((prev) => ({
-        ...prev,
-        appearance: {
-          ...(prev.appearance || {}),
-          inline: {
-            ...(prev.appearance?.inline || {}),
-            systemReturnButton: !!e.detail,
+        };
+      });
+    };
+    const onInlineAppearanceFull = (e) => {
+      const fullPinnedSearch = !!e.detail;
+      setSettings((prev) => {
+        const state = normalizeAppearanceWorkspaceState(prev.appearanceWorkspaces);
+        if (state?.enabled && applyAppearanceEditRef.current) {
+          applyAppearanceEditRef.current((appearanceProfile) => ({
+            ...(appearanceProfile || {}),
+            inline: {
+              ...(appearanceProfile?.inline || {}),
+              fullPinnedSearch,
+            },
+          }));
+          return prev;
+        }
+        return {
+          ...prev,
+          appearance: {
+            ...(prev.appearance || {}),
+            inline: {
+              ...(prev.appearance?.inline || {}),
+              fullPinnedSearch,
+            },
           },
-        },
-      }));
+        };
+      });
+    };
+    const onInlineAppearanceReturn = (e) => {
+      const systemReturnButton = !!e.detail;
+      setSettings((prev) => {
+        const state = normalizeAppearanceWorkspaceState(prev.appearanceWorkspaces);
+        if (state?.enabled && applyAppearanceEditRef.current) {
+          applyAppearanceEditRef.current((appearanceProfile) => ({
+            ...(appearanceProfile || {}),
+            inline: {
+              ...(appearanceProfile?.inline || {}),
+              systemReturnButton,
+            },
+          }));
+          return prev;
+        }
+        return {
+          ...prev,
+          appearance: {
+            ...(prev.appearance || {}),
+            inline: {
+              ...(prev.appearance?.inline || {}),
+              systemReturnButton,
+            },
+          },
+        };
+      });
+    };
     const onSearxngBase = (e) =>
       setSettings((prev) => ({
         ...prev,
@@ -3102,6 +3187,9 @@ function App() {
       updateAppearanceForWorkspace(appearanceEditingTargetId, mutator),
     [updateAppearanceForWorkspace, appearanceEditingTargetId],
   );
+  useEffect(() => {
+    applyAppearanceEditRef.current = applyAppearanceEdit;
+  }, [applyAppearanceEdit]);
 
   const appearanceWorkspaceOptions = useMemo(() => {
     const anchoredWorkspace =

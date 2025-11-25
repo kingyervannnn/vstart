@@ -25,6 +25,7 @@ import {
   createWorkspaceSwitchingManager,
   getNormalizedPath,
 } from "./lib/workspace-switching";
+import { setSettingsOpen, isSettingsOpen } from "./lib/settings-visibility";
 
 // Import background assets
 import themeGif2 from "./assets/theme_2.gif";
@@ -506,6 +507,21 @@ function App() {
       followSlug: true,
       workspaceEnabled: false,
     },
+    iconTheming: (() => {
+      try {
+        const saved = localStorage.getItem("iconThemingSettings");
+        if (saved) {
+          return JSON.parse(saved);
+        }
+      } catch { }
+      return {
+        enabled: false,
+        mode: 'grayscale', // 'grayscale' | 'tint' | 'monochrome' | 'grayscale_and_tint'
+        color: '#ff0000',
+        opacity: 0.5,
+        workspaces: {}, // { [workspaceId]: { mode, color, opacity } }
+      };
+    })(),
     license: {
       active: false,
       key: "",
@@ -1028,10 +1044,15 @@ function App() {
     try {
       localStorage.setItem(
         "appearanceSettings",
-        JSON.stringify(settings.appearance),
+        JSON.stringify({
+          ...settings.appearance,
+          // Don't persist masterLayout if it's just a temporary override
+          masterLayout: settings.appearance.masterLayout,
+        }),
       );
+      localStorage.setItem("iconThemingSettings", JSON.stringify(settings.iconTheming));
     } catch { }
-  }, [settings.appearance]);
+  }, [settings.appearance, settings.iconTheming]); // Added settings.iconTheming to dependencies
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -2646,6 +2667,94 @@ function App() {
     };
   }, []);
 
+  // Handle scroll-to-change-workspace for the entire right column when "include whole column" is enabled
+  useEffect(() => {
+    const scrollToChangeWorkspace = !!(settings?.general?.scrollToChangeWorkspace);
+    const scrollToChangeWorkspaceIncludeSpeedDial = !!(settings?.general?.scrollToChangeWorkspaceIncludeSpeedDial);
+    const scrollToChangeWorkspaceIncludeWholeColumn = !!(settings?.general?.scrollToChangeWorkspaceIncludeWholeColumn);
+    const scrollToChangeWorkspaceResistance = !!(settings?.general?.scrollToChangeWorkspaceResistance);
+    const scrollToChangeWorkspaceResistanceIntensity = Number(settings?.general?.scrollToChangeWorkspaceResistanceIntensity ?? 100);
+
+    // Only add listener if "include whole column" is enabled
+    if (!scrollToChangeWorkspace || !scrollToChangeWorkspaceIncludeSpeedDial || !scrollToChangeWorkspaceIncludeWholeColumn || workspaces.length === 0) {
+      return;
+    }
+
+    const rightColumn = document.getElementById('app-right-column');
+    if (!rightColumn) return;
+
+    let lastScrollTime = 0;
+    let scrollAccumulator = 0;
+
+    const handleColumnWheel = (e) => {
+      // Disable scroll-to-change-workspace when settings panel is open
+      if (isSettingsOpen()) {
+        return;
+      }
+
+      // Check if the scroll event is within the right column bounds
+      const rect = rightColumn.getBoundingClientRect();
+      const mouseX = e.clientX;
+      const mouseY = e.clientY;
+
+      // Only process if mouse is within the column bounds
+      if (mouseX < rect.left || mouseX > rect.right || mouseY < rect.top || mouseY > rect.bottom) {
+        return;
+      }
+
+      // Throttle scroll events (max once per 150ms)
+      const now = Date.now();
+      if (now - lastScrollTime < 150) {
+        e.preventDefault();
+        return;
+      }
+      lastScrollTime = now;
+
+      const deltaY = e.deltaY;
+
+      // Resistance scrolling: accumulate scroll delta before changing workspace
+      if (scrollToChangeWorkspaceResistance) {
+        scrollAccumulator += Math.abs(deltaY);
+        const RESISTANCE_THRESHOLD = Math.max(50, Math.min(500, scrollToChangeWorkspaceResistanceIntensity));
+        if (scrollAccumulator < RESISTANCE_THRESHOLD) {
+          e.preventDefault();
+          return;
+        }
+        scrollAccumulator = 0; // Reset accumulator
+      }
+
+      // Prevent default scroll behavior
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Determine scroll direction
+      const scrollDown = deltaY > 0;
+
+      // Find current workspace index
+      const currentIndex = workspaces.findIndex(ws => ws.id === activeWorkspaceId);
+      if (currentIndex === -1) return;
+
+      // Calculate next workspace index
+      let nextIndex;
+      if (scrollDown) {
+        nextIndex = currentIndex < workspaces.length - 1 ? currentIndex + 1 : 0;
+      } else {
+        nextIndex = currentIndex > 0 ? currentIndex - 1 : workspaces.length - 1;
+      }
+
+      // Change workspace
+      const nextWorkspace = workspaces[nextIndex];
+      if (nextWorkspace && nextWorkspace.id !== activeWorkspaceId) {
+        handleWorkspaceSelect(nextWorkspace.id);
+      }
+    };
+
+    rightColumn.addEventListener('wheel', handleColumnWheel, { passive: false });
+    return () => {
+      rightColumn.removeEventListener('wheel', handleColumnWheel);
+    };
+  }, [settings?.general?.scrollToChangeWorkspace, settings?.general?.scrollToChangeWorkspaceIncludeSpeedDial, settings?.general?.scrollToChangeWorkspaceIncludeWholeColumn, settings?.general?.scrollToChangeWorkspaceResistance, settings?.general?.scrollToChangeWorkspaceResistanceIntensity, workspaces, activeWorkspaceId]);
+
   // Detect and neutralize page zoom so geometry stays constant unplugged/plugged
   useEffect(() => {
     const handle = () => {
@@ -3258,6 +3367,7 @@ function App() {
 
   const handleSettingsVisibilityChange = useCallback(
     (open) => {
+      setSettingsOpen(open);
       if (open) {
         setLastAppearancePreviewId(activeWorkspaceId);
         return;
@@ -4637,6 +4747,75 @@ function App() {
           speedDial: { ...prev.speedDial, glowByUrl: !!checked },
         }))
       }
+      onToggleIconThemingEnabled={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: { ...(prev.iconTheming || {}), enabled: !!val },
+        }))
+      }
+      onSelectIconThemingMode={(mode) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: { ...(prev.iconTheming || {}), mode: mode },
+        }))
+      }
+      onChangeIconThemingColor={(color) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: { ...(prev.iconTheming || {}), color: color },
+        }))
+      }
+      onChangeIconThemingOpacity={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: { ...(prev.iconTheming || {}), opacity: Number(val) },
+        }))
+      }
+      onChangeWorkspaceIconThemeMode={(wsId, mode) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: {
+            ...prev.iconTheming,
+            workspaces: {
+              ...(prev.iconTheming.workspaces || {}),
+              [wsId]: {
+                ...(prev.iconTheming.workspaces?.[wsId] || {}),
+                mode,
+              },
+            },
+          },
+        }))
+      }
+      onChangeWorkspaceIconThemeColor={(wsId, color) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: {
+            ...prev.iconTheming,
+            workspaces: {
+              ...(prev.iconTheming.workspaces || {}),
+              [wsId]: {
+                ...(prev.iconTheming.workspaces?.[wsId] || {}),
+                color,
+              },
+            },
+          },
+        }))
+      }
+      onChangeWorkspaceIconThemeOpacity={(wsId, opacity) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: {
+            ...prev.iconTheming,
+            workspaces: {
+              ...(prev.iconTheming.workspaces || {}),
+              [wsId]: {
+                ...(prev.iconTheming.workspaces?.[wsId] || {}),
+                opacity,
+              },
+            },
+          },
+        }))
+      }
       onToggleGlowWorkspaceColorOnDoubleClick={(val) =>
         setSettings((prev) => ({
           ...prev,
@@ -5146,7 +5325,11 @@ function App() {
   return (
     <>
       {/* Wire SettingsButton events to settings updates */}
-      <IconThemeFilters settings={settings} />
+      <IconThemeFilters
+        settings={settings}
+        activeWorkspaceId={activeWorkspaceId}
+        anchoredWorkspaceId={settings?.speedDial?.anchoredWorkspaceId}
+      />
       <script
         dangerouslySetInnerHTML={{
           __html: `

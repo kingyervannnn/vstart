@@ -16,6 +16,7 @@ import { createThemeTokenResolver, WORKSPACE_FONT_PRESETS } from '../lib/theme-t
 import { trySaveIconToProject } from '../lib/icon-storage'
 import { useGlowSystem, glowTransitionStyles } from '../lib/glow-system'
 import { createSpeedDialGlow, createTabGlow, enhancedGlowTransitions, applySoftSwitchGlow } from '../lib/speed-dial-glow'
+import { isSettingsOpen } from '../lib/settings-visibility'
 import './classic-buttons.css'
 import './banner-scroll.css'
 import './tight-tabs.css'
@@ -1898,16 +1899,22 @@ function ExperimentalDial({
   const speedDialScrollAccumulatorRef = useRef(0) // For resistance scrolling
 
   const handleSpeedDialWheel = useCallback((e) => {
+    // Disable scroll-to-change-workspace when settings panel is open
+    if (isSettingsOpen()) {
+      return;
+    }
     if (!speedDialScrollEnabled || !dialWrapperRef.current || !workspaces || workspaces.length === 0) return
+
+    // If includeWholeColumn is enabled, let the column-level handler take care of it
+    if (scrollToChangeWorkspaceIncludeWholeColumn) {
+      return; // Let the column handler in App.jsx handle it
+    }
 
     const container = dialWrapperRef.current
     const rect = container.getBoundingClientRect()
     const mouseY = e.clientY
 
-    // If includeWholeColumn is enabled, allow scrolling anywhere in speed dial
-    if (scrollToChangeWorkspaceIncludeWholeColumn) {
-      // Allow scrolling anywhere - no position restrictions
-    } else if (!scrollToChangeWorkspaceIncludeSpeedDial) {
+    if (!scrollToChangeWorkspaceIncludeSpeedDial) {
       // If includeSpeedDial is false, only allow scrolling in bottom 20% of speed dial
       const bottomThreshold = rect.top + (rect.height * 0.8) // Bottom 20%
       if (mouseY < bottomThreshold) {

@@ -10,6 +10,7 @@ import {
 import { ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from './ui/context-menu'
 import { Layers, Home, Grid2X2, AppWindow, LayoutList, Plus, Trash2, Edit3 } from 'lucide-react'
 import { createThemeTokenResolver } from '../lib/theme-tokens'
+import { isSettingsOpen } from '../lib/settings-visibility'
 
 // Minimal helpers for color handling (keep local to avoid cross-import churn)
 function stripAlphaFromHexLocal(hex) {
@@ -107,9 +108,17 @@ const WorkspaceStrip = ({ items, activeId, onSelect, onDoubleSelect, onAdd, onRe
   const scrollAccumulatorRef = useRef(0) // For resistance scrolling
 
   const handleWheel = useCallback((e) => {
-    // If includeWholeColumn is enabled (and speed dial is included), allow scrolling even when not directly over buttons
-    const shouldAllowScroll = scrollToChangeWorkspaceIncludeSpeedDial && scrollToChangeWorkspaceIncludeWholeColumn
-    if (!scrollToChangeWorkspace || !containerRef.current || items.length === 0 || (!shouldAllowScroll && !isMouseOverRef.current)) return
+    // Disable scroll-to-change-workspace when settings panel is open
+    if (isSettingsOpen()) {
+      return;
+    }
+    // If includeWholeColumn is enabled, let the column-level handler take care of it
+    if (scrollToChangeWorkspaceIncludeSpeedDial && scrollToChangeWorkspaceIncludeWholeColumn) {
+      return; // Let the column handler in App.jsx handle it
+    }
+    // Otherwise, only allow when mouse is directly over the workspace buttons
+    if (!scrollToChangeWorkspace || !containerRef.current || items.length === 0) return
+    if (!isMouseOverRef.current) return
 
     // Throttle scroll events (max once per 150ms)
     const now = Date.now()

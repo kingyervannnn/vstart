@@ -175,6 +175,14 @@ const SettingsButton = ({
   onToggleMusicMatchSearchBarBlur,
   onToggleMusicDisableButtonBackgrounds,
   onChangeWidgetsVerticalOffset,
+  // Icon Theming
+  onToggleIconThemingEnabled,
+  onSelectIconThemingMode,
+  onChangeIconThemingColor,
+  onChangeIconThemingOpacity,
+  onChangeWorkspaceIconThemeMode,
+  onChangeWorkspaceIconThemeColor,
+  onChangeWorkspaceIconThemeOpacity,
 }) => {
   const [showSettings, setShowSettings] = useState(false)
   const [aiModels, setAiModels] = useState([])
@@ -224,7 +232,7 @@ const SettingsButton = ({
           firecrawlApiKey: firecrawlKeyDraft ?? ''
         }
         localStorage.setItem('aiSettings', JSON.stringify(merged))
-      } catch {}
+      } catch { }
     }, 300)
     return () => clearTimeout(t)
     // Keep dependencies strictly to drafts + current settings.ai
@@ -252,7 +260,7 @@ const SettingsButton = ({
           firecrawlApiKey: firecrawlKeyDraft ?? ''
         }
         localStorage.setItem('aiSettings', JSON.stringify(merged))
-      } catch {}
+      } catch { }
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
@@ -319,7 +327,7 @@ const SettingsButton = ({
   const searchBarTransientEnabled = !!(settings?.appearance?.searchBar?.glowTransient)
   const searchBarRefocusEnabled = !!(settings?.appearance?.searchBar?.refocusByUrl)
   const searchBarHoverGlow = !!(settings?.appearance?.searchBar?.hoverGlow)
-   const searchBarMatchSpeedDialMaxGlow = !!(settings?.appearance?.searchBar?.matchSpeedDialMaxGlow)
+  const searchBarMatchSpeedDialMaxGlow = !!(settings?.appearance?.searchBar?.matchSpeedDialMaxGlow)
   const searchBarMaxGlowDisplay = (() => {
     const barMax = settings?.appearance?.searchBar?.maxGlow
     const sdMax = settings?.speedDial?.maxGlow
@@ -402,8 +410,8 @@ const SettingsButton = ({
     if (distanceFromBottom > 96) return
     const top = el.scrollTop
     // Restore on next frame and shortly after to defeat anchor adjustments
-    requestAnimationFrame(() => { try { el.scrollTop = top } catch {} })
-    setTimeout(() => { try { el.scrollTop = top } catch {} }, 60)
+    requestAnimationFrame(() => { try { el.scrollTop = top } catch { } })
+    setTimeout(() => { try { el.scrollTop = top } catch { } }, 60)
   }
 
   useEffect(() => {
@@ -413,17 +421,17 @@ const SettingsButton = ({
     if (showSettings) body.classList.add('settings-panel-open')
     else body.classList.remove('settings-panel-open')
     if (typeof window !== 'undefined') {
-      try { window.dispatchEvent(new CustomEvent('app-settings-open', { detail: showSettings })) } catch {}
+      try { window.dispatchEvent(new CustomEvent('app-settings-open', { detail: showSettings })) } catch { }
     }
   }, [showSettings])
 
   useEffect(() => {
     return () => {
       if (typeof document !== 'undefined') {
-        try { document.body?.classList?.remove('settings-panel-open') } catch {}
+        try { document.body?.classList?.remove('settings-panel-open') } catch { }
       }
       if (typeof window !== 'undefined') {
-        try { window.dispatchEvent(new CustomEvent('app-settings-open', { detail: false })) } catch {}
+        try { window.dispatchEvent(new CustomEvent('app-settings-open', { detail: false })) } catch { }
       }
     }
   }, [])
@@ -465,13 +473,13 @@ const SettingsButton = ({
       setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
       return
     }
-    
+
     setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
-    
+
     try {
       const key = String(apiKey).trim()
       console.log('Validating ImgBB API key via server:', { keyPrefix: key.substring(0, 10) + '...' })
-      
+
       // Use server-side validation endpoint to avoid CORS issues
       let response
       try {
@@ -489,7 +497,7 @@ const SettingsButton = ({
           body: JSON.stringify({ apiKey: key }),
         })
       }
-      
+
       if (response.ok) {
         const result = await response.json()
         if (result.valid) {
@@ -569,13 +577,13 @@ const SettingsButton = ({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              style={{ 
-                color: '#fff', 
+              style={{
+                color: '#fff',
                 '--text-rgb': '255,255,255',
                 fontFamily: 'Inter, system-ui, Arial, sans-serif' // Unchangeable font for Settings panel
               }}
             >
-              
+
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-white">Settings</h3>
                 <button
@@ -639,10 +647,10 @@ const SettingsButton = ({
                         value={settings?.search?.engine || 'google'}
                         onChange={(e) => {
                           const val = e.target.value
-                          try { localStorage.setItem('searchEngine', val) } catch {}
+                          try { localStorage.setItem('searchEngine', val) } catch { }
                           window.dispatchEvent(new CustomEvent('app-change-search-engine', { detail: val }))
                         }}
-                        onWheel={(e) => { try { e.currentTarget.blur() } catch {} }}
+                        onWheel={(e) => { try { e.currentTarget.blur() } catch { } }}
                         className="ml-2 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
                         title="Search engine"
                       >
@@ -661,10 +669,10 @@ const SettingsButton = ({
                         value={settings?.search?.suggestProvider || 'duckduckgo'}
                         onChange={(e) => {
                           const val = e.target.value
-                          try { localStorage.setItem('suggestProvider', val) } catch {}
+                          try { localStorage.setItem('suggestProvider', val) } catch { }
                           window.dispatchEvent(new CustomEvent('app-change-suggest-provider', { detail: val }))
                         }}
-                        onWheel={(e) => { try { e.currentTarget.blur() } catch {} }}
+                        onWheel={(e) => { try { e.currentTarget.blur() } catch { } }}
                         className="ml-2 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
                         title="Suggestions provider"
                       >
@@ -684,10 +692,10 @@ const SettingsButton = ({
                         value={settings?.search?.inlineProvider || 'searxng'}
                         onChange={(e) => {
                           const val = e.target.value
-                          try { localStorage.setItem('inlineProvider', val) } catch {}
+                          try { localStorage.setItem('inlineProvider', val) } catch { }
                           window.dispatchEvent(new CustomEvent('app-inline-set-provider', { detail: val }))
                         }}
-                        onWheel={(e) => { try { e.currentTarget.blur() } catch {} }}
+                        onWheel={(e) => { try { e.currentTarget.blur() } catch { } }}
                         className="ml-2 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
                         title="Inline search provider"
                       >
@@ -734,11 +742,11 @@ const SettingsButton = ({
                           checked={settings?.search?.inlineEnabled !== false}
                           onChange={(e) => {
                             const detail = !!e.target.checked
-                            try { localStorage.setItem('searchSettings', JSON.stringify({ ...(settings?.search || {}), inlineEnabled: detail })) } catch {}
-                            try { window.dispatchEvent(new CustomEvent('app-inline-enabled', { detail })) } catch {}
+                            try { localStorage.setItem('searchSettings', JSON.stringify({ ...(settings?.search || {}), inlineEnabled: detail })) } catch { }
+                            try { window.dispatchEvent(new CustomEvent('app-inline-enabled', { detail })) } catch { }
                           }}
                           className="peer absolute opacity-0 w-0 h-0"
-                          
+
                         />
                         <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
                           <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
@@ -757,7 +765,7 @@ const SettingsButton = ({
                             checked={settings?.search?.inlineUseAI !== false}
                             onChange={(e) => {
                               const val = !!e.target.checked
-                              try { localStorage.setItem('inlineUseAI', String(val)) } catch {}
+                              try { localStorage.setItem('inlineUseAI', String(val)) } catch { }
                               window.dispatchEvent(new CustomEvent('app-inline-use-ai', { detail: val }))
                             }}
                             className="peer absolute opacity-0 w-0 h-0"
@@ -769,7 +777,7 @@ const SettingsButton = ({
                         {settings?.search?.inlineUseAI === false && (
                           <div className="flex flex-col gap-2">
                             <div className="flex items-center gap-2">
-                              <span className="text-white/70 text-xs" style={{minWidth:'10rem'}}>Inline Firecrawl base URL</span>
+                              <span className="text-white/70 text-xs" style={{ minWidth: '10rem' }}>Inline Firecrawl base URL</span>
                               <input
                                 type="text"
                                 defaultValue={settings?.search?.inlineFirecrawlBaseUrl || '/firecrawl-inline'}
@@ -779,7 +787,7 @@ const SettingsButton = ({
                               />
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="text-white/70 text-xs" style={{minWidth:'10rem'}}>Inline Firecrawl API key</span>
+                              <span className="text-white/70 text-xs" style={{ minWidth: '10rem' }}>Inline Firecrawl API key</span>
                               <input
                                 type="text"
                                 defaultValue={settings?.search?.inlineFirecrawlApiKey || ''}
@@ -800,7 +808,7 @@ const SettingsButton = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-white/70 text-xs" style={{minWidth:'10rem'}}>Global base URL</span>
+                        <span className="text-white/70 text-xs" style={{ minWidth: '10rem' }}>Global base URL</span>
                         <input
                           type="text"
                           defaultValue={settings?.search?.searxngBaseUrl || '/searxng'}
@@ -810,7 +818,7 @@ const SettingsButton = ({
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-white/70 text-xs" style={{minWidth:'10rem'}}>Suggestions override</span>
+                        <span className="text-white/70 text-xs" style={{ minWidth: '10rem' }}>Suggestions override</span>
                         <input
                           type="text"
                           defaultValue={settings?.search?.suggestSearxngBaseUrl || ''}
@@ -820,7 +828,7 @@ const SettingsButton = ({
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-white/70 text-xs" style={{minWidth:'10rem'}}>Inline override</span>
+                        <span className="text-white/70 text-xs" style={{ minWidth: '10rem' }}>Inline override</span>
                         <input
                           type="text"
                           defaultValue={settings?.search?.inlineSearxngBaseUrl || ''}
@@ -844,11 +852,11 @@ const SettingsButton = ({
                             checked={settings?.search?.inlineEnabled !== false}
                             onChange={(e) => {
                               const detail = !!e.target.checked
-                              try { localStorage.setItem('searchSettings', JSON.stringify({ ...(settings?.search || {}), inlineEnabled: detail })) } catch {}
-                              try { window.dispatchEvent(new CustomEvent('app-inline-enabled', { detail })) } catch {}
+                              try { localStorage.setItem('searchSettings', JSON.stringify({ ...(settings?.search || {}), inlineEnabled: detail })) } catch { }
+                              try { window.dispatchEvent(new CustomEvent('app-inline-enabled', { detail })) } catch { }
                             }}
                             className="peer absolute opacity-0 w-0 h-0"
-                            
+
                           />
                           <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
                             <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
@@ -857,610 +865,610 @@ const SettingsButton = ({
                       </div>
                       <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-white/70 text-xs" style={{minWidth:'10rem'}}>Endpoint prefix</span>
-                        <input
-                          type="text"
-                          defaultValue={settings?.search?.inlineCustomBaseUrl || ''}
-                          onBlur={(e) => window.dispatchEvent(new CustomEvent('app-inline-custom-base', { detail: e.target.value }))}
-                          placeholder="/inline/custom?q= or https://host/search?q="
-                          className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                        />
-                      </div>
-                      <div className="text-white/55 text-[10px]">
-                        The response should be either an array of results or an object with a <code>results</code> or <code>data</code> array. Each item may include
-                        <code className="mx-1">title</code>, <code className="mx-1">url</code>, and <code className="mx-1">description</code>/<code className="mx-1">snippet</code>.
-                      </div>
-                    </div>
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-2">
-                      <div>
-                        <div className="text-white text-sm font-medium">Custom suggestions provider</div>
-                        <div className="text-white/60 text-xs">
-                          Use this when the Suggestions provider is set to Custom. Endpoint must accept a <code>q</code> parameter.
+                          <span className="text-white/70 text-xs" style={{ minWidth: '10rem' }}>Endpoint prefix</span>
+                          <input
+                            type="text"
+                            defaultValue={settings?.search?.inlineCustomBaseUrl || ''}
+                            onBlur={(e) => window.dispatchEvent(new CustomEvent('app-inline-custom-base', { detail: e.target.value }))}
+                            placeholder="/inline/custom?q= or https://host/search?q="
+                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                          />
+                        </div>
+                        <div className="text-white/55 text-[10px]">
+                          The response should be either an array of results or an object with a <code>results</code> or <code>data</code> array. Each item may include
+                          <code className="mx-1">title</code>, <code className="mx-1">url</code>, and <code className="mx-1">description</code>/<code className="mx-1">snippet</code>.
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white/70 text-xs" style={{minWidth:'10rem'}}>Endpoint prefix</span>
-                        <input
-                          type="text"
-                          defaultValue={settings?.search?.suggestCustomBaseUrl || ''}
-                          onBlur={(e) => window.dispatchEvent(new CustomEvent('app-suggest-custom-base', { detail: e.target.value }))}
-                          placeholder="/suggest/custom?q= or https://host/suggest?q="
-                          className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                        />
+                      <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-2">
+                        <div>
+                          <div className="text-white text-sm font-medium">Custom suggestions provider</div>
+                          <div className="text-white/60 text-xs">
+                            Use this when the Suggestions provider is set to Custom. Endpoint must accept a <code>q</code> parameter.
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/70 text-xs" style={{ minWidth: '10rem' }}>Endpoint prefix</span>
+                          <input
+                            type="text"
+                            defaultValue={settings?.search?.suggestCustomBaseUrl || ''}
+                            onBlur={(e) => window.dispatchEvent(new CustomEvent('app-suggest-custom-base', { detail: e.target.value }))}
+                            placeholder="/suggest/custom?q= or https://host/suggest?q="
+                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/70 text-xs" style={{ minWidth: '10rem' }}>Response format</span>
+                          <select
+                            defaultValue={settings?.search?.suggestCustomMode || 'ddg'}
+                            onChange={(e) => window.dispatchEvent(new CustomEvent('app-suggest-custom-mode', { detail: e.target.value }))}
+                            className="bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
+                          >
+                            <option value="ddg">DuckDuckGo style (array of objects with "phrase")</option>
+                            <option value="google">Google / Brave style ([q, [s1, s2, ...]] or array of strings)</option>
+                          </select>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white/70 text-xs" style={{minWidth:'10rem'}}>Response format</span>
-                        <select
-                          defaultValue={settings?.search?.suggestCustomMode || 'ddg'}
-                          onChange={(e) => window.dispatchEvent(new CustomEvent('app-suggest-custom-mode', { detail: e.target.value }))}
-                          className="bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
-                        >
-                          <option value="ddg">DuckDuckGo style (array of objects with "phrase")</option>
-                          <option value="google">Google / Brave style ([q, [s1, s2, ...]] or array of strings)</option>
-                        </select>
-                      </div>
-                    </div>
-                    {/* Voice (STT + TTS) */}
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
-                      <div className="text-white text-sm font-medium">Voice</div>
-                      {/* STT Provider */}
-                      <div className="text-white/80 text-xs">Transcription (STT)</div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>Provider</span>
-                        <select
-                          value={settings?.general?.voice?.provider || settings?.general?.voice?.stt?.provider || 'local-stt'}
-                          onChange={(e) => onChangeVoiceProvider?.(e.target.value)}
-                          onWheel={(e) => { try { e.currentTarget.blur() } catch {} }}
-                          className="bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
-                        >
-                          <option value="local-stt">Local STT (Faster-Whisper)</option>
-                          <option value="api">External API (ElevenLabs, etc.)</option>
-                          <option value="local">Legacy local proxy (/api)</option>
-                        </select>
-                      </div>
-                      {(settings?.general?.voice?.provider || settings?.general?.voice?.stt?.provider || 'local-stt') === 'local-stt' && (
-                        <div className="space-y-2">
-                          <div className="flex gap-2 items-center">
-                            <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>STT base URL</span>
-                            <input
-                              type="text"
-                              value={settings?.general?.voice?.stt?.baseUrl ?? '/stt'}
-                              onChange={(e) => onChangeVoiceSttBase?.(e.target.value)}
-                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                              placeholder="/stt (dev proxy) or http://127.0.0.1:8090"
-                            />
+                      {/* Voice (STT + TTS) */}
+                      <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
+                        <div className="text-white text-sm font-medium">Voice</div>
+                        {/* STT Provider */}
+                        <div className="text-white/80 text-xs">Transcription (STT)</div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>Provider</span>
+                          <select
+                            value={settings?.general?.voice?.provider || settings?.general?.voice?.stt?.provider || 'local-stt'}
+                            onChange={(e) => onChangeVoiceProvider?.(e.target.value)}
+                            onWheel={(e) => { try { e.currentTarget.blur() } catch { } }}
+                            className="bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
+                          >
+                            <option value="local-stt">Local STT (Faster-Whisper)</option>
+                            <option value="api">External API (ElevenLabs, etc.)</option>
+                            <option value="local">Legacy local proxy (/api)</option>
+                          </select>
+                        </div>
+                        {(settings?.general?.voice?.provider || settings?.general?.voice?.stt?.provider || 'local-stt') === 'local-stt' && (
+                          <div className="space-y-2">
+                            <div className="flex gap-2 items-center">
+                              <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>STT base URL</span>
+                              <input
+                                type="text"
+                                value={settings?.general?.voice?.stt?.baseUrl ?? '/stt'}
+                                onChange={(e) => onChangeVoiceSttBase?.(e.target.value)}
+                                className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                                placeholder="/stt (dev proxy) or http://127.0.0.1:8090"
+                              />
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>Auth token</span>
+                              <input
+                                type="text"
+                                value={settings?.general?.voice?.stt?.token ?? ''}
+                                onChange={(e) => onChangeVoiceSttToken?.(e.target.value)}
+                                className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                                placeholder="Bearer token"
+                              />
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>Model</span>
+                              <input
+                                type="text"
+                                value={settings?.general?.voice?.stt?.model ?? 'small'}
+                                onChange={(e) => onChangeVoiceSttModel?.(e.target.value)}
+                                className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                                placeholder="tiny/base/small/medium/large-v3 or path"
+                              />
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>Language</span>
+                              <input
+                                type="text"
+                                value={settings?.general?.voice?.stt?.language ?? 'auto'}
+                                onChange={(e) => onChangeVoiceSttLanguage?.(e.target.value)}
+                                className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                                placeholder="auto or en, de, ..."
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                                <span className="text-white/80 text-xs">VAD</span>
+                                <input type="checkbox" checked={settings?.general?.voice?.stt?.vad !== false} onChange={(e) => onToggleVoiceSttVad?.(e.target.checked)} />
+                              </label>
+                              <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                                <span className="text-white/80 text-xs">Diarization</span>
+                                <input type="checkbox" checked={!!settings?.general?.voice?.stt?.diarization} onChange={(e) => onToggleVoiceSttDiarization?.(e.target.checked)} />
+                              </label>
+                              <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                                <span className="text-white/80 text-xs">Timestamps</span>
+                                <select
+                                  value={settings?.general?.voice?.stt?.timestamps || 'word'}
+                                  onChange={(e) => onSelectVoiceSttTimestamps?.(e.target.value)}
+                                  className="ml-2 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
+                                >
+                                  <option value="word">Word</option>
+                                  <option value="segment">Segment</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="text-white/50 text-[10px]">Tip: Keep timestamps on and enable diarization to prepare for voice-to-voice features.</div>
                           </div>
-                          <div className="flex gap-2 items-center">
-                            <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>Auth token</span>
-                            <input
-                              type="text"
-                              value={settings?.general?.voice?.stt?.token ?? ''}
-                              onChange={(e) => onChangeVoiceSttToken?.(e.target.value)}
-                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                              placeholder="Bearer token"
-                            />
-                          </div>
-                          <div className="flex gap-2 items-center">
-                            <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>Model</span>
-                            <input
-                              type="text"
-                              value={settings?.general?.voice?.stt?.model ?? 'small'}
-                              onChange={(e) => onChangeVoiceSttModel?.(e.target.value)}
-                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                              placeholder="tiny/base/small/medium/large-v3 or path"
-                            />
-                          </div>
-                          <div className="flex gap-2 items-center">
-                            <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>Language</span>
-                            <input
-                              type="text"
-                              value={settings?.general?.voice?.stt?.language ?? 'auto'}
-                              onChange={(e) => onChangeVoiceSttLanguage?.(e.target.value)}
-                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                              placeholder="auto or en, de, ..."
-                            />
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                              <span className="text-white/80 text-xs">VAD</span>
-                              <input type="checkbox" checked={settings?.general?.voice?.stt?.vad !== false} onChange={(e) => onToggleVoiceSttVad?.(e.target.checked)} />
-                            </label>
-                            <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                              <span className="text-white/80 text-xs">Diarization</span>
-                              <input type="checkbox" checked={!!settings?.general?.voice?.stt?.diarization} onChange={(e) => onToggleVoiceSttDiarization?.(e.target.checked)} />
-                            </label>
-                            <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                              <span className="text-white/80 text-xs">Timestamps</span>
-                              <select
-                                value={settings?.general?.voice?.stt?.timestamps || 'word'}
-                                onChange={(e) => onSelectVoiceSttTimestamps?.(e.target.value)}
-                                className="ml-2 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
-                              >
-                                <option value="word">Word</option>
-                                <option value="segment">Segment</option>
-                              </select>
+                        )}
+                        {(settings?.general?.voice?.provider || settings?.general?.voice?.stt?.provider || 'local-stt') === 'api' && (
+                          <div className="space-y-2">
+                            <div className="flex gap-2 items-center">
+                              <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>API URL</span>
+                              <input
+                                type="text"
+                                value={settings?.general?.voice?.apiUrl ?? ''}
+                                onChange={(e) => onChangeVoiceApiUrl?.(e.target.value)}
+                                className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                                placeholder="https://api.elevenlabs.io/v1/speech-to-text (example)"
+                              />
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>API key</span>
+                              <input
+                                type="text"
+                                value={settings?.general?.voice?.apiKey ?? ''}
+                                onChange={(e) => onChangeVoiceApiKey?.(e.target.value)}
+                                className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                                placeholder="Bearer token"
+                              />
                             </div>
                           </div>
-                          <div className="text-white/50 text-[10px]">Tip: Keep timestamps on and enable diarization to prepare for voice-to-voice features.</div>
-                        </div>
-                      )}
-                      {(settings?.general?.voice?.provider || settings?.general?.voice?.stt?.provider || 'local-stt') === 'api' && (
-                        <div className="space-y-2">
+                        )}
+                        {(settings?.general?.voice?.provider || settings?.general?.voice?.stt?.provider || 'local-stt') === 'local' && (
                           <div className="flex gap-2 items-center">
-                            <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>API URL</span>
+                            <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>Proxy base</span>
                             <input
                               type="text"
-                              value={settings?.general?.voice?.apiUrl ?? ''}
-                              onChange={(e) => onChangeVoiceApiUrl?.(e.target.value)}
+                              value={settings?.general?.voice?.serverBase ?? '/api'}
+                              onChange={(e) => onChangeVoiceLocalBase?.(e.target.value)}
                               className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                              placeholder="https://api.elevenlabs.io/v1/speech-to-text (example)"
+                              placeholder="/api (same-origin) or http://127.0.0.1:3099/api"
                             />
+                            <button
+                              onClick={() => onChangeVoiceLocalBase?.('/api')}
+                              className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white/80"
+                            >Use default</button>
                           </div>
-                          <div className="flex gap-2 items-center">
-                            <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>API key</span>
-                            <input
-                              type="text"
-                              value={settings?.general?.voice?.apiKey ?? ''}
-                              onChange={(e) => onChangeVoiceApiKey?.(e.target.value)}
-                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                              placeholder="Bearer token"
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {(settings?.general?.voice?.provider || settings?.general?.voice?.stt?.provider || 'local-stt') === 'local' && (
-                        <div className="flex gap-2 items-center">
-                          <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>Proxy base</span>
-                          <input
-                            type="text"
-                            value={settings?.general?.voice?.serverBase ?? '/api'}
-                            onChange={(e) => onChangeVoiceLocalBase?.(e.target.value)}
-                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                            placeholder="/api (same-origin) or http://127.0.0.1:3099/api"
-                          />
-                          <button
-                            onClick={() => onChangeVoiceLocalBase?.('/api')}
-                            className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white/80"
-                          >Use default</button>
-                        </div>
-                      )}
+                        )}
 
-                      {/* TTS Provider (XTTS) */}
-                      <div className="mt-3 pt-3 border-t border-white/10">
-                        <div className="text-white/80 text-xs mb-2">Synthesis (TTS)</div>
-                        <div className="flex gap-2 items-center">
-                          <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>XTTS base URL</span>
-                          <input
-                            type="text"
-                            value={settings?.general?.voice?.tts?.baseUrl ?? settings?.general?.voice?.xttsBase ?? 'http://127.0.0.1:8088'}
-                            onChange={(e) => onChangeVoiceTtsBase?.(e.target.value)}
-                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                            placeholder="http://127.0.0.1:8088"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    {/* AI subsection */}
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="text-white text-sm font-medium">AI</div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-white/80 text-xs">Enable AI features</div>
-                          <div className="text-white/60 text-[11px]">Controls AI chat and inline AI usage.</div>
-                        </div>
-                        <label className="inline-flex items-center cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={settings?.ai?.enabled !== false}
-                            onChange={(e) => {
-                              const detail = !!e.target.checked
-                              try { localStorage.setItem('aiSettings', JSON.stringify({ ...(settings?.ai || {}), enabled: detail })) } catch {}
-                              try { window.dispatchEvent(new CustomEvent('app-ai-enabled', { detail })) } catch {}
-                            }}
-                            className="peer absolute opacity-0 w-0 h-0"
-                            
-                          />
-                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
-                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
-                          </div>
-                        </label>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-white/80 text-xs">Open a new chat every time</div>
-                          <div className="text-white/60 text-[11px]">When enabled, AI mode always starts a fresh chat instead of reopening the last one.</div>
-                        </div>
-                        <label className="inline-flex items-center cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={!!settings?.ai?.openNewChatEverytime}
-                            onChange={(e) => {
-                              const detail = !!e.target.checked
-                              try { localStorage.setItem('aiSettings', JSON.stringify({ ...(settings?.ai || {}), openNewChatEverytime: detail })) } catch {}
-                              try { window.dispatchEvent(new CustomEvent('app-ai-open-new-chat-everytime', { detail })) } catch {}
-                            }}
-                            className="peer absolute opacity-0 w-0 h-0"
-                          />
-                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
-                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
-                          </div>
-                        </label>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="text-white/80 text-xs">Available models</div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={refreshModels}
-                            className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white/80"
-                          >Refresh models</button>
-                          <select
-                            value={settings?.ai?.model || aiModel || ''}
-                            onChange={(e) => {
-                              // Change current session model without accidental wheel changes
-                              setAiModel(e.target.value)
-                            }}
-                            onWheel={(e) => {
-                              // Prevent wheel from altering select; just blur
-                              try { e.stopPropagation() } catch {}
-                              try { e.currentTarget.blur() } catch {}
-                            }}
-                            onContextMenu={(e) => {
-                              // Right click: set as default (persisted)
-                              e.preventDefault()
-                              const val = e.currentTarget.value
-                              try {
-                                window.dispatchEvent(new CustomEvent('app-ai-change-model', { detail: val }))
-                              } catch {}
-                            }}
-                            className="bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
-                            title="Available models (right-click to make default)"
-                          >
-                            <option value="">(use default)</option>
-                            {aiModels.map((m) => (<option key={m} value={m}>{m}</option>))}
-                          </select>
-                        </div>
-                      </div>
-                      
-                      {/* Voice backend and bubble toggles removed */}
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className="text-white/80 text-xs" style={{minWidth:'10rem'}}>LM Studio base URL</div>
-                          <input
-                            type="text"
-                            value={lmstudioBaseDraft}
-                            onChange={(e) => setLmstudioBaseDraft(e.target.value)}
-                            onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-set-lmstudio-base', { detail: e.target.value }))}
-                            placeholder="http://127.0.0.1:1234/v1 (Docker: http://host.docker.internal:1234/v1)"
-                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                          />
-                          {String(settings?.ai?.lmstudioBaseUrl||'').trim() && (
-                            provStatus.lmstudio === 'ok' ? <Check className="w-4 h-4 text-green-400" /> : (provStatus.lmstudio === 'fail' ? <X className="w-4 h-4 text-red-400" /> : <span className="w-4 h-4" />)
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-white/80 text-xs" style={{minWidth:'10rem'}}>OpenAI API key</div>
-                          <input
-                            type="password"
-                            value={openaiKeyDraft}
-                            onChange={(e) => setOpenaiKeyDraft(e.target.value)}
-                            onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-set-openai-key', { detail: e.target.value }))}
-                            placeholder="sk-..."
-                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                          />
-                          {String(settings?.ai?.openaiApiKey||'').trim() && (
-                            provStatus.openai === 'ok' ? <Check className="w-4 h-4 text-green-400" /> : (provStatus.openai === 'fail' ? <X className="w-4 h-4 text-red-400" /> : <span className="w-4 h-4" />)
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-white/80 text-xs" style={{minWidth:'10rem'}}>OpenRouter API key</div>
-                          <input
-                            type="password"
-                            value={openrouterKeyDraft}
-                            onChange={(e) => setOpenrouterKeyDraft(e.target.value)}
-                            onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-set-openrouter-key', { detail: e.target.value }))}
-                            placeholder="or-..."
-                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                          />
-                          {String(settings?.ai?.openrouterApiKey||'').trim() && (
-                            provStatus.openrouter === 'ok' ? <Check className="w-4 h-4 text-green-400" /> : (provStatus.openrouter === 'fail' ? <X className="w-4 h-4 text-red-400" /> : <span className="w-4 h-4" />)
-                          )}
-                        </div>
-                      <div className="flex items-center gap-2">
-                          <div className="text-white/80 text-xs" style={{minWidth:'10rem'}}>OpenRouter base URL</div>
-                          <input
-                            type="text"
-                            value={openrouterBaseDraft}
-                            onChange={(e) => setOpenrouterBaseDraft(e.target.value)}
-                            onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-set-openrouter-base', { detail: e.target.value }))}
-                            placeholder="https://openrouter.ai/api/v1 (optional)"
-                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-white/80 text-xs" style={{minWidth:'10rem'}}>Results count</div>
-                          <select
-                            defaultValue={String(settings?.ai?.webResultsCount || 5)}
-                            onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-results-count', { detail: Number(e.target.value) }))}
-                            className="bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1"
-                          >
-                            {[3,5,7,10].map(n => (<option key={n} value={n}>{n}</option>))}
-                          </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1" />
-                          <div className="text-white/80 text-xs" style={{minWidth:'8rem'}}>AI Memory</div>
-                          <button
-                            className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white/80"
-                            onClick={() => { setMemoryDraft(settings?.ai?.memoryContent || ''); setShowMemoryModal(true) }}
-                          >Edit...</button>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="text-white/80 text-xs">Web search provider</div>
-                        <select
-                          value={settings?.ai?.webSearchProvider || 'firecrawl'}
-                          onChange={(e) => {
-                            const val = e.target.value
-                            try { localStorage.setItem('aiWebProvider', val) } catch {}
-                            window.dispatchEvent(new CustomEvent('app-ai-set-web-provider', { detail: val }))
-                          }}
-                          onWheel={(e) => { try { e.currentTarget.blur() } catch {} }}
-                          className="ml-2 bg-white/10 text-white text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
-                          title="Web search provider"
-                        >
-                          <option value="searxng">SearXNG (fallback)</option>
-                          <option value="firecrawl">Firecrawl (self-host)</option>
-                        </select>
-                      </div>
-                      {String(settings?.ai?.webSearchProvider || 'firecrawl') === 'searxng' && (
-                        <div className="flex flex-col gap-2 mt-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>SearXNG base URL</span>
+                        {/* TTS Provider (XTTS) */}
+                        <div className="mt-3 pt-3 border-t border-white/10">
+                          <div className="text-white/80 text-xs mb-2">Synthesis (TTS)</div>
+                          <div className="flex gap-2 items-center">
+                            <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>XTTS base URL</span>
                             <input
                               type="text"
-                              defaultValue={settings?.ai?.webSearxngBaseUrl || ''}
-                              onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-web-searxng-base', { detail: e.target.value }))}
-                              placeholder="Optional; defaults to global SearXNG base"
+                              value={settings?.general?.voice?.tts?.baseUrl ?? settings?.general?.voice?.xttsBase ?? 'http://127.0.0.1:8088'}
+                              onChange={(e) => onChangeVoiceTtsBase?.(e.target.value)}
                               className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                              placeholder="http://127.0.0.1:8088"
                             />
                           </div>
                         </div>
-                      )}
-                      {String(settings?.ai?.webSearchProvider || 'firecrawl') === 'firecrawl' && (
-                        <div className="flex flex-col gap-2 mt-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>Firecrawl base URL</span>
-                          <input
-                              type="text"
-                              value={firecrawlBaseDraft || ''}
-                              onChange={(e) => setFirecrawlBaseDraft(e.target.value)}
-                              onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-firecrawl-base', { detail: e.target.value }))}
-                              placeholder="/firecrawl (proxied) or http://localhost:3002"
-                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                            />
+                      </div>
+                      {/* AI subsection */}
+                      <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-white text-sm font-medium">AI</div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-white/80 text-xs">Enable AI features</div>
+                            <div className="text-white/60 text-[11px]">Controls AI chat and inline AI usage.</div>
                           </div>
+                          <label className="inline-flex items-center cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={settings?.ai?.enabled !== false}
+                              onChange={(e) => {
+                                const detail = !!e.target.checked
+                                try { localStorage.setItem('aiSettings', JSON.stringify({ ...(settings?.ai || {}), enabled: detail })) } catch { }
+                                try { window.dispatchEvent(new CustomEvent('app-ai-enabled', { detail })) } catch { }
+                              }}
+                              className="peer absolute opacity-0 w-0 h-0"
+
+                            />
+                            <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                              <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                            </div>
+                          </label>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-white/80 text-xs">Open a new chat every time</div>
+                            <div className="text-white/60 text-[11px]">When enabled, AI mode always starts a fresh chat instead of reopening the last one.</div>
+                          </div>
+                          <label className="inline-flex items-center cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={!!settings?.ai?.openNewChatEverytime}
+                              onChange={(e) => {
+                                const detail = !!e.target.checked
+                                try { localStorage.setItem('aiSettings', JSON.stringify({ ...(settings?.ai || {}), openNewChatEverytime: detail })) } catch { }
+                                try { window.dispatchEvent(new CustomEvent('app-ai-open-new-chat-everytime', { detail })) } catch { }
+                              }}
+                              className="peer absolute opacity-0 w-0 h-0"
+                            />
+                            <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                              <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                            </div>
+                          </label>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-white/80 text-xs">Available models</div>
                           <div className="flex items-center gap-2">
-                            <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>Firecrawl API key</span>
+                            <button
+                              onClick={refreshModels}
+                              className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white/80"
+                            >Refresh models</button>
+                            <select
+                              value={settings?.ai?.model || aiModel || ''}
+                              onChange={(e) => {
+                                // Change current session model without accidental wheel changes
+                                setAiModel(e.target.value)
+                              }}
+                              onWheel={(e) => {
+                                // Prevent wheel from altering select; just blur
+                                try { e.stopPropagation() } catch { }
+                                try { e.currentTarget.blur() } catch { }
+                              }}
+                              onContextMenu={(e) => {
+                                // Right click: set as default (persisted)
+                                e.preventDefault()
+                                const val = e.currentTarget.value
+                                try {
+                                  window.dispatchEvent(new CustomEvent('app-ai-change-model', { detail: val }))
+                                } catch { }
+                              }}
+                              className="bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
+                              title="Available models (right-click to make default)"
+                            >
+                              <option value="">(use default)</option>
+                              {aiModels.map((m) => (<option key={m} value={m}>{m}</option>))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Voice backend and bubble toggles removed */}
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="text-white/80 text-xs" style={{ minWidth: '10rem' }}>LM Studio base URL</div>
                             <input
                               type="text"
-                              value={firecrawlKeyDraft}
-                              onChange={(e) => setFirecrawlKeyDraft(e.target.value)}
-                              onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-firecrawl-key', { detail: e.target.value }))}
-                              placeholder="Optional Bearer token"
+                              value={lmstudioBaseDraft}
+                              onChange={(e) => setLmstudioBaseDraft(e.target.value)}
+                              onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-set-lmstudio-base', { detail: e.target.value }))}
+                              placeholder="http://127.0.0.1:1234/v1 (Docker: http://host.docker.internal:1234/v1)"
                               className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
                             />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {/* Routing controls */}
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg mt-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-white text-sm font-medium">Routing</div>
-                        <input
-                          type="checkbox"
-                          checked={settings?.ai?.routingEnabled !== false}
-                          onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-enabled', { detail: !!e.target.checked }))}
-                        />
-                      </div>
-                      {settings?.ai?.routingEnabled !== false && (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-4 text-white/80 text-xs">
-                            <label className="inline-flex items-center gap-2">
-                              <input
-                                type="radio"
-                                name="ai-routing-mode"
-                                checked={(settings?.ai?.routingMode || 'auto') === 'manual'}
-                                onChange={() => window.dispatchEvent(new CustomEvent('app-ai-routing-mode', { detail: 'manual' }))}
-                              />
-                              <span>Manual by task</span>
-                            </label>
-                            <label className="inline-flex items-center gap-2">
-                              <input
-                                type="radio"
-                                name="ai-routing-mode"
-                                checked={(settings?.ai?.routingMode || 'auto') === 'auto'}
-                                onChange={() => window.dispatchEvent(new CustomEvent('app-ai-routing-mode', { detail: 'auto' }))}
-                              />
-                              <span>Pure auto</span>
-                            </label>
-                            {(settings?.ai?.routingMode || 'auto') === 'auto' && (
-                              <label className="inline-flex items-center gap-2 ml-4">
-                                <input
-                                  type="checkbox"
-                                  checked={!!settings?.ai?.preferLocal}
-                                  onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-prefer-local', { detail: !!e.target.checked }))}
-                                />
-                                <span>Prefer local models</span>
-                              </label>
+                            {String(settings?.ai?.lmstudioBaseUrl || '').trim() && (
+                              provStatus.lmstudio === 'ok' ? <Check className="w-4 h-4 text-green-400" /> : (provStatus.lmstudio === 'fail' ? <X className="w-4 h-4 text-red-400" /> : <span className="w-4 h-4" />)
                             )}
                           </div>
-                          {(settings?.ai?.routingMode || 'auto') === 'manual' && (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-white/70 text-xs" style={{minWidth:'4.5rem'}}>Default</span>
-                                <select
-                                  value={settings?.ai?.routeModels?.default || ''}
-                                  onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-model-default', { detail: e.target.value }))}
-                                  className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1"
-                                >
-                                  <option value="">(auto)</option>
-                                  {aiModels.map((m) => (<option key={`d-${m}`} value={m}>{m}</option>))}
-                                </select>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-white/70 text-xs" style={{minWidth:'4.5rem'}}>Coding</span>
-                                <select
-                                  value={settings?.ai?.routeModels?.code || ''}
-                                  onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-model-code', { detail: e.target.value }))}
-                                  className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1"
-                                >
-                                  <option value="">(auto)</option>
-                                  {aiModels.map((m) => (<option key={`c-${m}`} value={m}>{m}</option>))}
-                                </select>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-white/70 text-xs" style={{minWidth:'4.5rem'}}>Long input</span>
-                                <select
-                                  value={settings?.ai?.routeModels?.long || ''}
-                                  onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-model-long', { detail: e.target.value }))}
-                                  className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1"
-                                >
-                                  <option value="">(auto)</option>
-                                  {aiModels.map((m) => (<option key={`l-${m}`} value={m}>{m}</option>))}
-                                </select>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    {/* Image Search */}
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-white text-sm font-medium">Image Search</div>
-                          <div className="text-white/60 text-xs mt-1">
-                            Configure reverse image search providers for inline and external searches
+                          <div className="flex items-center gap-2">
+                            <div className="text-white/80 text-xs" style={{ minWidth: '10rem' }}>OpenAI API key</div>
+                            <input
+                              type="password"
+                              value={openaiKeyDraft}
+                              onChange={(e) => setOpenaiKeyDraft(e.target.value)}
+                              onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-set-openai-key', { detail: e.target.value }))}
+                              placeholder="sk-..."
+                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                            />
+                            {String(settings?.ai?.openaiApiKey || '').trim() && (
+                              provStatus.openai === 'ok' ? <Check className="w-4 h-4 text-green-400" /> : (provStatus.openai === 'fail' ? <X className="w-4 h-4 text-red-400" /> : <span className="w-4 h-4" />)
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-white/80 text-xs" style={{ minWidth: '10rem' }}>OpenRouter API key</div>
+                            <input
+                              type="password"
+                              value={openrouterKeyDraft}
+                              onChange={(e) => setOpenrouterKeyDraft(e.target.value)}
+                              onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-set-openrouter-key', { detail: e.target.value }))}
+                              placeholder="or-..."
+                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                            />
+                            {String(settings?.ai?.openrouterApiKey || '').trim() && (
+                              provStatus.openrouter === 'ok' ? <Check className="w-4 h-4 text-green-400" /> : (provStatus.openrouter === 'fail' ? <X className="w-4 h-4 text-red-400" /> : <span className="w-4 h-4" />)
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-white/80 text-xs" style={{ minWidth: '10rem' }}>OpenRouter base URL</div>
+                            <input
+                              type="text"
+                              value={openrouterBaseDraft}
+                              onChange={(e) => setOpenrouterBaseDraft(e.target.value)}
+                              onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-set-openrouter-base', { detail: e.target.value }))}
+                              placeholder="https://openrouter.ai/api/v1 (optional)"
+                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-white/80 text-xs" style={{ minWidth: '10rem' }}>Results count</div>
+                            <select
+                              defaultValue={String(settings?.ai?.webResultsCount || 5)}
+                              onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-results-count', { detail: Number(e.target.value) }))}
+                              className="bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1"
+                            >
+                              {[3, 5, 7, 10].map(n => (<option key={n} value={n}>{n}</option>))}
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1" />
+                            <div className="text-white/80 text-xs" style={{ minWidth: '8rem' }}>AI Memory</div>
+                            <button
+                              className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white/80"
+                              onClick={() => { setMemoryDraft(settings?.ai?.memoryContent || ''); setShowMemoryModal(true) }}
+                            >Edit...</button>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <div className="flex gap-2 items-center">
-                          <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>Inline provider</span>
+                        <div className="flex items-center justify-between">
+                          <div className="text-white/80 text-xs">Web search provider</div>
                           <select
-                            defaultValue={settings?.search?.imageSearch?.inlineProvider || 'searxng'}
-                            onChange={(e) => window.dispatchEvent(new CustomEvent('app-image-search-inline-provider', { detail: e.target.value }))}
-                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                          >
-                            <option value="searxng">SearXNG</option>
-                          </select>
-                        </div>
-                        
-                        <div className="flex gap-2 items-center">
-                          <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>External provider</span>
-                          <select
-                            defaultValue={settings?.search?.imageSearch?.externalProvider || 'google-lens'}
-                            onChange={(e) => window.dispatchEvent(new CustomEvent('app-image-search-external-provider', { detail: e.target.value }))}
-                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                          >
-                            <option value="google-lens">Google Lens</option>
-                            <option value="searxng">SearXNG (aggregated)</option>
-                          </select>
-                        </div>
-                        
-                        {/* ImgBB API Key for Google Lens */}
-                        <div className="text-white/70 text-xs mb-1" style={{minWidth:'8rem'}}>Google Lens (ImgBB)</div>
-                        <div className="flex gap-2 items-center">
-                          <span className="text-white/70 text-xs" style={{minWidth:'8rem'}}>API key</span>
-                          <input
-                            type="text"
-                            value={settings?.search?.imgbbApiKey || ''}
+                            value={settings?.ai?.webSearchProvider || 'firecrawl'}
                             onChange={(e) => {
-                              // Update immediately for better UX and persistence
-                              const key = e.target.value
-                              console.log('ImgBB API key onChange:', key.substring(0, 10) + '...')
-                              // Dispatch event to update settings (which triggers localStorage save)
-                              const event = new CustomEvent('app-search-imgbb-apikey', { detail: key })
-                              window.dispatchEvent(event)
-                              console.log('Event dispatched, checking if handler exists...')
-                              // Validate after a short delay (only if key looks complete)
-                              if (key && String(key).trim().length > 10) {
-                                setTimeout(() => validateImgbbKey(key), 500)
-                              } else {
-                                setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
-                              }
+                              const val = e.target.value
+                              try { localStorage.setItem('aiWebProvider', val) } catch { }
+                              window.dispatchEvent(new CustomEvent('app-ai-set-web-provider', { detail: val }))
                             }}
-                            onBlur={(e) => {
-                              const key = e.target.value
-                              // Ensure it's saved one more time on blur
-                              window.dispatchEvent(new CustomEvent('app-search-imgbb-apikey', { detail: key }))
-                              if (key && String(key).trim()) {
-                                validateImgbbKey(key)
-                              } else {
-                                setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
-                              }
-                            }}
-                            className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
-                            placeholder="Required for Google Lens. Get free key from api.imgbb.com"
-                          />
-                          {String(settings?.search?.imgbbApiKey || '').trim() && (
-                            provStatus.imgbb === 'ok' ? <Check className="w-4 h-4 text-green-400" /> : (provStatus.imgbb === 'fail' ? <X className="w-4 h-4 text-red-400" /> : <span className="w-4 h-4 animate-pulse text-white/50">⏳</span>)
-                          )}
-                          <button
-                            onClick={() => {
-                              const key = settings?.search?.imgbbApiKey
-                              if (key) {
-                                console.log('Manual ImgBB API key test triggered')
-                                validateImgbbKey(key)
-                              } else {
-                                alert('Please enter an API key first')
-                              }
-                            }}
-                            className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white/80"
-                            title="Test API key connection"
+                            onWheel={(e) => { try { e.currentTarget.blur() } catch { } }}
+                            className="ml-2 bg-white/10 text-white text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
+                            title="Web search provider"
                           >
-                            Test
-                          </button>
+                            <option value="searxng">SearXNG (fallback)</option>
+                            <option value="firecrawl">Firecrawl (self-host)</option>
+                          </select>
                         </div>
-                        {provStatus.imgbb === 'fail' && (
-                          <div className="text-red-400 text-[10px] mt-1">
-                            Validation failed. Check browser console (F12) for details. Verify your API key at api.imgbb.com
+                        {String(settings?.ai?.webSearchProvider || 'firecrawl') === 'searxng' && (
+                          <div className="flex flex-col gap-2 mt-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>SearXNG base URL</span>
+                              <input
+                                type="text"
+                                defaultValue={settings?.ai?.webSearxngBaseUrl || ''}
+                                onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-web-searxng-base', { detail: e.target.value }))}
+                                placeholder="Optional; defaults to global SearXNG base"
+                                className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                              />
+                            </div>
                           </div>
                         )}
-                        {provStatus.imgbb === 'idle' && String(settings?.search?.imgbbApiKey || '').trim() && (
-                          <div className="text-white/50 text-[10px] mt-1">
-                            Validation in progress...
+                        {String(settings?.ai?.webSearchProvider || 'firecrawl') === 'firecrawl' && (
+                          <div className="flex flex-col gap-2 mt-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>Firecrawl base URL</span>
+                              <input
+                                type="text"
+                                value={firecrawlBaseDraft || ''}
+                                onChange={(e) => setFirecrawlBaseDraft(e.target.value)}
+                                onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-firecrawl-base', { detail: e.target.value }))}
+                                placeholder="/firecrawl (proxied) or http://localhost:3002"
+                                className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                              />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>Firecrawl API key</span>
+                              <input
+                                type="text"
+                                value={firecrawlKeyDraft}
+                                onChange={(e) => setFirecrawlKeyDraft(e.target.value)}
+                                onBlur={(e) => window.dispatchEvent(new CustomEvent('app-ai-firecrawl-key', { detail: e.target.value }))}
+                                placeholder="Optional Bearer token"
+                                className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                              />
+                            </div>
                           </div>
                         )}
-                        {provStatus.imgbb === 'ok' && (
-                          <div className="text-green-400 text-[10px] mt-1">
-                            ✓ API key validated successfully
-                          </div>
-                        )}
-                        <div className="text-white/50 text-[10px]">
-                          Free image hosting for Google Lens. Server: api.imgbb.com (fixed, no configuration needed). <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">Get free API key</a>
-                        </div>
-                        
-                        <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                          <div>
-                            <span className="text-white/80 text-xs">Prefer inline results</span>
-                            <div className="text-white/50 text-[10px] mt-0.5">Show image results inline regardless of inline toggle state</div>
-                          </div>
+                      </div>
+                      {/* Routing controls */}
+                      <div className="p-3 bg-white/5 border border-white/15 rounded-lg mt-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-white text-sm font-medium">Routing</div>
                           <input
                             type="checkbox"
-                            checked={!!settings?.search?.imageSearch?.preferInline}
-                            onChange={(e) => window.dispatchEvent(new CustomEvent('app-image-search-prefer-inline', { detail: !!e.target.checked }))}
+                            checked={settings?.ai?.routingEnabled !== false}
+                            onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-enabled', { detail: !!e.target.checked }))}
                           />
-                        </label>
+                        </div>
+                        {settings?.ai?.routingEnabled !== false && (
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-4 text-white/80 text-xs">
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  type="radio"
+                                  name="ai-routing-mode"
+                                  checked={(settings?.ai?.routingMode || 'auto') === 'manual'}
+                                  onChange={() => window.dispatchEvent(new CustomEvent('app-ai-routing-mode', { detail: 'manual' }))}
+                                />
+                                <span>Manual by task</span>
+                              </label>
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  type="radio"
+                                  name="ai-routing-mode"
+                                  checked={(settings?.ai?.routingMode || 'auto') === 'auto'}
+                                  onChange={() => window.dispatchEvent(new CustomEvent('app-ai-routing-mode', { detail: 'auto' }))}
+                                />
+                                <span>Pure auto</span>
+                              </label>
+                              {(settings?.ai?.routingMode || 'auto') === 'auto' && (
+                                <label className="inline-flex items-center gap-2 ml-4">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!settings?.ai?.preferLocal}
+                                    onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-prefer-local', { detail: !!e.target.checked }))}
+                                  />
+                                  <span>Prefer local models</span>
+                                </label>
+                              )}
+                            </div>
+                            {(settings?.ai?.routingMode || 'auto') === 'manual' && (
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-white/70 text-xs" style={{ minWidth: '4.5rem' }}>Default</span>
+                                  <select
+                                    value={settings?.ai?.routeModels?.default || ''}
+                                    onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-model-default', { detail: e.target.value }))}
+                                    className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1"
+                                  >
+                                    <option value="">(auto)</option>
+                                    {aiModels.map((m) => (<option key={`d-${m}`} value={m}>{m}</option>))}
+                                  </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-white/70 text-xs" style={{ minWidth: '4.5rem' }}>Coding</span>
+                                  <select
+                                    value={settings?.ai?.routeModels?.code || ''}
+                                    onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-model-code', { detail: e.target.value }))}
+                                    className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1"
+                                  >
+                                    <option value="">(auto)</option>
+                                    {aiModels.map((m) => (<option key={`c-${m}`} value={m}>{m}</option>))}
+                                  </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-white/70 text-xs" style={{ minWidth: '4.5rem' }}>Long input</span>
+                                  <select
+                                    value={settings?.ai?.routeModels?.long || ''}
+                                    onChange={(e) => window.dispatchEvent(new CustomEvent('app-ai-routing-model-long', { detail: e.target.value }))}
+                                    className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1"
+                                  >
+                                    <option value="">(auto)</option>
+                                    {aiModels.map((m) => (<option key={`l-${m}`} value={m}>{m}</option>))}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {/* Image Search */}
+                      <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-white text-sm font-medium">Image Search</div>
+                            <div className="text-white/60 text-xs mt-1">
+                              Configure reverse image search providers for inline and external searches
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="flex gap-2 items-center">
+                            <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>Inline provider</span>
+                            <select
+                              defaultValue={settings?.search?.imageSearch?.inlineProvider || 'searxng'}
+                              onChange={(e) => window.dispatchEvent(new CustomEvent('app-image-search-inline-provider', { detail: e.target.value }))}
+                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                            >
+                              <option value="searxng">SearXNG</option>
+                            </select>
+                          </div>
+
+                          <div className="flex gap-2 items-center">
+                            <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>External provider</span>
+                            <select
+                              defaultValue={settings?.search?.imageSearch?.externalProvider || 'google-lens'}
+                              onChange={(e) => window.dispatchEvent(new CustomEvent('app-image-search-external-provider', { detail: e.target.value }))}
+                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                            >
+                              <option value="google-lens">Google Lens</option>
+                              <option value="searxng">SearXNG (aggregated)</option>
+                            </select>
+                          </div>
+
+                          {/* ImgBB API Key for Google Lens */}
+                          <div className="text-white/70 text-xs mb-1" style={{ minWidth: '8rem' }}>Google Lens (ImgBB)</div>
+                          <div className="flex gap-2 items-center">
+                            <span className="text-white/70 text-xs" style={{ minWidth: '8rem' }}>API key</span>
+                            <input
+                              type="text"
+                              value={settings?.search?.imgbbApiKey || ''}
+                              onChange={(e) => {
+                                // Update immediately for better UX and persistence
+                                const key = e.target.value
+                                console.log('ImgBB API key onChange:', key.substring(0, 10) + '...')
+                                // Dispatch event to update settings (which triggers localStorage save)
+                                const event = new CustomEvent('app-search-imgbb-apikey', { detail: key })
+                                window.dispatchEvent(event)
+                                console.log('Event dispatched, checking if handler exists...')
+                                // Validate after a short delay (only if key looks complete)
+                                if (key && String(key).trim().length > 10) {
+                                  setTimeout(() => validateImgbbKey(key), 500)
+                                } else {
+                                  setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const key = e.target.value
+                                // Ensure it's saved one more time on blur
+                                window.dispatchEvent(new CustomEvent('app-search-imgbb-apikey', { detail: key }))
+                                if (key && String(key).trim()) {
+                                  validateImgbbKey(key)
+                                } else {
+                                  setProvStatus(prev => ({ ...prev, imgbb: 'idle' }))
+                                }
+                              }}
+                              className="flex-1 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none"
+                              placeholder="Required for Google Lens. Get free key from api.imgbb.com"
+                            />
+                            {String(settings?.search?.imgbbApiKey || '').trim() && (
+                              provStatus.imgbb === 'ok' ? <Check className="w-4 h-4 text-green-400" /> : (provStatus.imgbb === 'fail' ? <X className="w-4 h-4 text-red-400" /> : <span className="w-4 h-4 animate-pulse text-white/50">⏳</span>)
+                            )}
+                            <button
+                              onClick={() => {
+                                const key = settings?.search?.imgbbApiKey
+                                if (key) {
+                                  console.log('Manual ImgBB API key test triggered')
+                                  validateImgbbKey(key)
+                                } else {
+                                  alert('Please enter an API key first')
+                                }
+                              }}
+                              className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white/80"
+                              title="Test API key connection"
+                            >
+                              Test
+                            </button>
+                          </div>
+                          {provStatus.imgbb === 'fail' && (
+                            <div className="text-red-400 text-[10px] mt-1">
+                              Validation failed. Check browser console (F12) for details. Verify your API key at api.imgbb.com
+                            </div>
+                          )}
+                          {provStatus.imgbb === 'idle' && String(settings?.search?.imgbbApiKey || '').trim() && (
+                            <div className="text-white/50 text-[10px] mt-1">
+                              Validation in progress...
+                            </div>
+                          )}
+                          {provStatus.imgbb === 'ok' && (
+                            <div className="text-green-400 text-[10px] mt-1">
+                              ✓ API key validated successfully
+                            </div>
+                          )}
+                          <div className="text-white/50 text-[10px]">
+                            Free image hosting for Google Lens. Server: api.imgbb.com (fixed, no configuration needed). <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">Get free API key</a>
+                          </div>
+
+                          <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                            <div>
+                              <span className="text-white/80 text-xs">Prefer inline results</span>
+                              <div className="text-white/50 text-[10px] mt-0.5">Show image results inline regardless of inline toggle state</div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={!!settings?.search?.imageSearch?.preferInline}
+                              onChange={(e) => window.dispatchEvent(new CustomEvent('app-image-search-prefer-inline', { detail: !!e.target.checked }))}
+                            />
+                          </label>
+                        </div>
                       </div>
                     </div>
                   </div>
-                  </div>
-                  
+
                 </TabsContent>
 
                 {showMemoryModal && (
@@ -1506,7 +1514,7 @@ const SettingsButton = ({
                           checked={!!workspaceBackgroundsEnabled}
                           onChange={(e) => onToggleWorkspaceBackgroundsEnabled?.(!!e.target.checked)}
                           className="peer absolute opacity-0 w-0 h-0"
-                          
+
                         />
                         <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60 opacity-100">
                           <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
@@ -1610,11 +1618,10 @@ const SettingsButton = ({
                                   key={opt.id}
                                   type="button"
                                   onClick={() => onSelectAppearanceWorkspace?.(opt.id)}
-                                  className={`px-3 py-1 text-xs rounded-md border transition-colors ${
-                                    isActive
-                                      ? 'bg-cyan-500/20 border-cyan-300 text-white'
-                                      : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
-                                  }`}
+                                  className={`px-3 py-1 text-xs rounded-md border transition-colors ${isActive
+                                    ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                    : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                                    }`}
                                 >
                                   {opt.label}{anchoredLabel}
                                 </button>
@@ -1638,11 +1645,10 @@ const SettingsButton = ({
                             <button
                               key={opt.id}
                               type="button"
-                              className={`px-3 py-1 text-xs rounded-md border transition-colors ${
-                                masterLayoutMode === opt.id
-                                  ? 'bg-cyan-500/20 border-cyan-300 text-white'
-                                  : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
-                              }`}
+                              className={`px-3 py-1 text-xs rounded-md border transition-colors ${masterLayoutMode === opt.id
+                                ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                                }`}
                               onClick={() => onSelectMasterLayout?.(opt.id)}
                               aria-pressed={masterLayoutMode === opt.id}
                             >
@@ -1826,11 +1832,10 @@ const SettingsButton = ({
                               <button
                                 key={position}
                                 onClick={() => handleHeaderAlignClick(position)}
-                                className={`px-3 py-1 rounded-full text-xs border transition-colors capitalize ${
-                                  isActive
-                                    ? 'bg-cyan-500/20 border-cyan-400 text-white'
-                                    : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                                }`}
+                                className={`px-3 py-1 rounded-full text-xs border transition-colors capitalize ${isActive
+                                  ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                                  : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                                  }`}
                               >
                                 {position}
                               </button>
@@ -1838,11 +1843,10 @@ const SettingsButton = ({
                           })}
                           <button
                             onClick={handleHeaderScrollClick}
-                            className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                              headerScrollEnabled
-                                ? 'bg-cyan-500/20 border-cyan-400 text-white'
-                                : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                            }`}
+                            className={`px-3 py-1 rounded-full text-xs border transition-colors ${headerScrollEnabled
+                              ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                              : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                              }`}
                           >
                             Scroll
                           </button>
@@ -2048,116 +2052,115 @@ const SettingsButton = ({
                     </div>
 
                     {(isMasterAppearanceView || !appearanceWorkspacesEnabled) && (
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium mb-2">Workspace Tabs</div>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { id: 'tabs', label: 'Tabs' },
-                          { id: 'tight', label: 'Tight Tabs' },
-                          { id: 'tight-tabz', label: 'Tight Tabz' },
-                          { id: 'cyber', label: 'Cyber Tabs' },
-                          { id: 'buttons_inside', label: 'Buttons Inside' },
-                          { id: 'buttons_outside', label: 'Buttons Outside' },
-                          { id: 'classic', label: 'Classic' },
-                        ].map(opt => (
-                          <button
-                            key={opt.id}
-                            onClick={() => onSelectTabsMode?.(opt.id)}
-                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                              tabsMode === opt.id
+                      <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
+                        <div className="text-white text-sm font-medium mb-2">Workspace Tabs</div>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { id: 'tabs', label: 'Tabs' },
+                            { id: 'tight', label: 'Tight Tabs' },
+                            { id: 'tight-tabz', label: 'Tight Tabz' },
+                            { id: 'cyber', label: 'Cyber Tabs' },
+                            { id: 'buttons_inside', label: 'Buttons Inside' },
+                            { id: 'buttons_outside', label: 'Buttons Outside' },
+                            { id: 'classic', label: 'Classic' },
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              onClick={() => onSelectTabsMode?.(opt.id)}
+                              className={`px-3 py-1 rounded-full text-sm border transition-colors ${tabsMode === opt.id
                                 ? 'bg-cyan-500/20 border-cyan-400 text-white'
                                 : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
+                                }`}
+                            >
+                              {opt.label}
+                            </button>
                           ))}
                         </div>
-                      <div className="text-white/60 text-xs mt-2">
-                        Tabs use the original pill layout. Tight Tabs keep the pill geometry but blend the active tab into the dial. Cyber Tabs add a futuristic fused style. Buttons use a rectangular layout. Classic shows a vertical workspace strip. <span className="text-white/70 font-semibold">Workspace tab shape is global</span> so all workspace appearances share this choice.
-                      </div>
-                      <div className="mt-3 grid gap-2">
-                        <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded cursor-pointer select-none">
-                          <div className="flex flex-col">
-                            <span className="text-white/80 text-xs">Hover feedback</span>
-                            <span className="text-white/50 text-[10px]">Enable hover effects on workspace tabs.</span>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={!!settings?.speedDial?.tabHoverShade}
-                            onChange={(e) => onToggleTabHoverShade?.(!!e.target.checked)}
-                          />
-                        </label>
-                        {settings?.speedDial?.tabHoverShade && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-white/80">
-                            {[
-                              { id: 'shade', label: 'Shade (neutral)' },
-                              { id: 'shade-color', label: 'Shade with workspace color' },
-                              { id: 'blur', label: 'Blur background on hover' },
-                              { id: 'blur-color', label: 'Blur + workspace color' },
-                            ].map(opt => (
-                              <label key={opt.id} className={`flex items-center justify-between p-2 border rounded bg-white/5 border-white/10 ${settings?.speedDial?.tabHoverStyle === opt.id ? 'bg-white/10 border-cyan-400' : ''}`}>
-                                <span className="pr-2">{opt.label}</span>
+                        <div className="text-white/60 text-xs mt-2">
+                          Tabs use the original pill layout. Tight Tabs keep the pill geometry but blend the active tab into the dial. Cyber Tabs add a futuristic fused style. Buttons use a rectangular layout. Classic shows a vertical workspace strip. <span className="text-white/70 font-semibold">Workspace tab shape is global</span> so all workspace appearances share this choice.
+                        </div>
+                        <div className="mt-3 grid gap-2">
+                          <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded cursor-pointer select-none">
+                            <div className="flex flex-col">
+                              <span className="text-white/80 text-xs">Hover feedback</span>
+                              <span className="text-white/50 text-[10px]">Enable hover effects on workspace tabs.</span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={!!settings?.speedDial?.tabHoverShade}
+                              onChange={(e) => onToggleTabHoverShade?.(!!e.target.checked)}
+                            />
+                          </label>
+                          {settings?.speedDial?.tabHoverShade && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-white/80">
+                              {[
+                                { id: 'shade', label: 'Shade (neutral)' },
+                                { id: 'shade-color', label: 'Shade with workspace color' },
+                                { id: 'blur', label: 'Blur background on hover' },
+                                { id: 'blur-color', label: 'Blur + workspace color' },
+                              ].map(opt => (
+                                <label key={opt.id} className={`flex items-center justify-between p-2 border rounded bg-white/5 border-white/10 ${settings?.speedDial?.tabHoverStyle === opt.id ? 'bg-white/10 border-cyan-400' : ''}`}>
+                                  <span className="pr-2">{opt.label}</span>
+                                  <input
+                                    type="radio"
+                                    name="tab-hover-style"
+                                    value={opt.id}
+                                    checked={(settings?.speedDial?.tabHoverStyle || 'shade-color') === opt.id}
+                                    onChange={(e) => onSelectTabHoverStyle?.(e.target.value)}
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                          {tabsMode === 'buttons_inside' && (
+                            <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                              <span className="text-white/80 text-xs">Show divider between tabs and shortcuts</span>
+                              <input type="checkbox" checked={!!settings?.speedDial?.tabsDivider} onChange={(e) => onToggleTabsDivider?.(e.target.checked)} />
+                            </div>
+                          )}
+                          <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                            <div>
+                              <div className="text-white/80 text-xs">Glow workspace color on double click</div>
+                              <div className="text-white/50 text-[10px]">Applies the workspace glow color to the double-click flash instead of blue.</div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={!!settings?.speedDial?.glowWorkspaceColorOnDoubleClick}
+                              onChange={(e) => onToggleGlowWorkspaceColorOnDoubleClick?.(!!e.target.checked)}
+                            />
+                          </label>
+                        </div>
+                        <div className="mt-4 border-t border-white/10 pt-3">
+                          <div className="text-white/70 text-xs mb-2">Strip Button Styles</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded p-2">
+                              <span className="text-white/80 text-xs">Background</span>
+                              <input type="checkbox" checked={!!(settings?.speedDial?.wsButtons?.background)} onChange={(e) => onToggleWsButtonBackground?.(e.target.checked)} />
+                            </label>
+                            <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded p-2">
+                              <span className="text-white/80 text-xs">Shadow</span>
+                              <input type="checkbox" checked={!!(settings?.speedDial?.wsButtons?.shadow)} onChange={(e) => onToggleWsButtonShadow?.(e.target.checked)} />
+                            </label>
+                            <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded p-2">
+                              <span className="text-white/80 text-xs">Blur when active</span>
+                              <input type="checkbox" checked={!!(settings?.speedDial?.wsButtons?.blur)} onChange={(e) => onToggleWsButtonBlur?.(e.target.checked)} />
+                            </label>
+                            {settings?.speedDial?.wsButtons?.blur && (
+                              <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded p-2">
+                                <span className="text-white/80 text-xs">Active blur matches Speed Dial blur level</span>
                                 <input
-                                  type="radio"
-                                  name="tab-hover-style"
-                                  value={opt.id}
-                                  checked={(settings?.speedDial?.tabHoverStyle || 'shade-color') === opt.id}
-                                  onChange={(e) => onSelectTabHoverStyle?.(e.target.value)}
+                                  type="checkbox"
+                                  checked={!!(settings?.speedDial?.wsButtons?.matchDialBlur)}
+                                  onChange={(e) => onToggleWsButtonMatchDialBlur?.(e.target.checked)}
                                 />
                               </label>
-                            ))}
+                            )}
                           </div>
-                        )}
-                        {tabsMode === 'buttons_inside' && (
-                          <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                            <span className="text-white/80 text-xs">Show divider between tabs and shortcuts</span>
-                            <input type="checkbox" checked={!!settings?.speedDial?.tabsDivider} onChange={(e) => onToggleTabsDivider?.(e.target.checked)} />
-                          </div>
-                        )}
-                        <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                          <div>
-                            <div className="text-white/80 text-xs">Glow workspace color on double click</div>
-                            <div className="text-white/50 text-[10px]">Applies the workspace glow color to the double-click flash instead of blue.</div>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={!!settings?.speedDial?.glowWorkspaceColorOnDoubleClick}
-                            onChange={(e) => onToggleGlowWorkspaceColorOnDoubleClick?.(!!e.target.checked)}
-                          />
-                        </label>
-                      </div>
-                      <div className="mt-4 border-t border-white/10 pt-3">
-                        <div className="text-white/70 text-xs mb-2">Strip Button Styles</div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded p-2">
-                            <span className="text-white/80 text-xs">Background</span>
-                            <input type="checkbox" checked={!!(settings?.speedDial?.wsButtons?.background)} onChange={(e) => onToggleWsButtonBackground?.(e.target.checked)} />
-                          </label>
-                          <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded p-2">
-                            <span className="text-white/80 text-xs">Shadow</span>
-                            <input type="checkbox" checked={!!(settings?.speedDial?.wsButtons?.shadow)} onChange={(e) => onToggleWsButtonShadow?.(e.target.checked)} />
-                          </label>
-                          <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded p-2">
-                            <span className="text-white/80 text-xs">Blur when active</span>
-                            <input type="checkbox" checked={!!(settings?.speedDial?.wsButtons?.blur)} onChange={(e) => onToggleWsButtonBlur?.(e.target.checked)} />
-                          </label>
-                          {settings?.speedDial?.wsButtons?.blur && (
-                            <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded p-2">
-                              <span className="text-white/80 text-xs">Active blur matches Speed Dial blur level</span>
-                              <input
-                                type="checkbox"
-                                checked={!!(settings?.speedDial?.wsButtons?.matchDialBlur)}
-                                onChange={(e) => onToggleWsButtonMatchDialBlur?.(e.target.checked)}
-                              />
-                            </label>
-                          )}
+                          <div className="text-white/50 text-[11px] mt-2">Affects the vertical workspace strip shown in Classic mode.</div>
                         </div>
-                      <div className="text-white/50 text-[11px] mt-2">Affects the vertical workspace strip shown in Classic mode.</div>
-                    </div>
 
-                      {/* System-wide glow block moved to top of Appearance */}
-                    </div>
+                        {/* System-wide glow block moved to top of Appearance */}
+                      </div>
                     )}
                     {/* ai chat (moved after Workspace Tabs) */}
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
@@ -2215,11 +2218,10 @@ const SettingsButton = ({
                               <button
                                 key={opt.id}
                                 type="button"
-                                className={`px-3 py-1 text-xs rounded-md border transition-colors ${
-                                  searchBarPosition === opt.id
-                                    ? 'bg-cyan-500/20 border-cyan-300 text-white'
-                                    : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
-                                }`}
+                                className={`px-3 py-1 text-xs rounded-md border transition-colors ${searchBarPosition === opt.id
+                                  ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                  : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                                  }`}
                                 onClick={() => onSelectSearchBarPosition?.(opt.id)}
                                 aria-pressed={searchBarPosition === opt.id}
                               >
@@ -2353,127 +2355,124 @@ const SettingsButton = ({
                           </div>
                           {/* Suggestions styling options */}
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <label className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
-                            <span className="text-white/80 text-xs">Remove background</span>
-                            <input type="checkbox" checked={!!suggCfg.removeBackground} onChange={(e) => onToggleSuggestionsRemoveBackground?.(!!e.target.checked)} />
-                          </label>
-                          <label className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
-                            <span className="text-white/80 text-xs">Remove outline</span>
-                            <input type="checkbox" checked={!!suggCfg.removeOutline} onChange={(e) => onToggleSuggestionsRemoveOutline?.(!!e.target.checked)} />
-                          </label>
-                          <label className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
-                            <span className="text-white/80 text-xs">Use shadows</span>
-                            <input type="checkbox" checked={suggCfg.useShadows !== false} onChange={(e) => onToggleSuggestionsUseShadows?.(!!e.target.checked)} />
-                          </label>
-                        </div>
+                            <label className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
+                              <span className="text-white/80 text-xs">Remove background</span>
+                              <input type="checkbox" checked={!!suggCfg.removeBackground} onChange={(e) => onToggleSuggestionsRemoveBackground?.(!!e.target.checked)} />
+                            </label>
+                            <label className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
+                              <span className="text-white/80 text-xs">Remove outline</span>
+                              <input type="checkbox" checked={!!suggCfg.removeOutline} onChange={(e) => onToggleSuggestionsRemoveOutline?.(!!e.target.checked)} />
+                            </label>
+                            <label className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
+                              <span className="text-white/80 text-xs">Use shadows</span>
+                              <input type="checkbox" checked={suggCfg.useShadows !== false} onChange={(e) => onToggleSuggestionsUseShadows?.(!!e.target.checked)} />
+                            </label>
+                          </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
-                            <div>
-                              <div className="text-white/90 text-xs font-medium">Transient glow</div>
-                              <div className="text-white/60 text-[10px]">Pulse when URL switches to a workspace.</div>
+                            <div className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
+                              <div>
+                                <div className="text-white/90 text-xs font-medium">Transient glow</div>
+                                <div className="text-white/60 text-[10px]">Pulse when URL switches to a workspace.</div>
+                              </div>
+                              <label className="inline-flex items-center cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={searchBarTransientEnabled}
+                                  onChange={(e) => onToggleSearchBarGlowTransient?.(!!e.target.checked)}
+                                />
+                              </label>
                             </div>
-                            <label className="inline-flex items-center cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={searchBarTransientEnabled}
-                                onChange={(e) => onToggleSearchBarGlowTransient?.(!!e.target.checked)}
-                              />
-                            </label>
-                          </div>
-                          <div className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
-                            <div>
-                              <div className="text-white/90 text-xs font-medium">Refocus (URL slug)</div>
-                              <div className="text-white/60 text-[10px]">On focus, glow using the URL workspace; falls back to current workspace when URL slug is off.</div>
+                            <div className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
+                              <div>
+                                <div className="text-white/90 text-xs font-medium">Refocus (URL slug)</div>
+                                <div className="text-white/60 text-[10px]">On focus, glow using the URL workspace; falls back to current workspace when URL slug is off.</div>
+                              </div>
+                              <label className="inline-flex items-center cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={searchBarRefocusEnabled}
+                                  onChange={(e) => onToggleSearchBarRefocus?.(!!e.target.checked)}
+                                />
+                              </label>
                             </div>
-                            <label className="inline-flex items-center cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={searchBarRefocusEnabled}
-                                onChange={(e) => onToggleSearchBarRefocus?.(!!e.target.checked)}
-                              />
-                            </label>
+                            {searchBarRefocusEnabled && (
+                              <div className="sm:col-span-2 p-2 bg-white/5 border border-white/10 rounded space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-white/90 text-xs font-medium">Refocus glow mode</div>
+                                  <div className="text-white/60 text-[10px]">Choose how the focus halo animates.</div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => onChangeSearchBarRefocusMode?.('letters')}
+                                    aria-pressed={searchBarRefocusMode === 'letters'}
+                                    className={`px-3 py-1 text-xs rounded-md border transition-colors ${searchBarRefocusMode === 'letters'
+                                      ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                      : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                                      }`}
+                                  >
+                                    Mode 1 - Directional on input
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onChangeSearchBarRefocusMode?.('pulse')}
+                                    aria-pressed={searchBarRefocusMode === 'pulse'}
+                                    className={`px-3 py-1 text-xs rounded-md border transition-colors ${searchBarRefocusMode === 'pulse'
+                                      ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                      : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                                      }`}
+                                  >
+                                    Mode 2 - Pulse then orient
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onChangeSearchBarRefocusMode?.('steady')}
+                                    aria-pressed={searchBarRefocusMode === 'steady'}
+                                    className={`px-3 py-1 text-xs rounded-md border transition-colors ${searchBarRefocusMode === 'steady'
+                                      ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                      : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                                      }`}
+                                  >
+                                    Mode 3 - Lock direction
+                                  </button>
+                                </div>
+                                <div className="text-white/50 text-[10px] leading-relaxed">
+                                  Mode 1 keeps the glow tight and only leans once text is present. Mode 2 flashes a brief halo before steering toward its on-screen position. Mode 3 locks the directional lean so typing never changes it.
+                                </div>
+                                <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded cursor-pointer select-none">
+                                  <div className="flex flex-col">
+                                    <span className="text-white/80 text-xs">Hover glow</span>
+                                    <span className="text-white/55 text-[10px]">Keep the refocus halo active while hovering over the bar.</span>
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={searchBarHoverGlow}
+                                    onChange={(e) => onToggleSearchBarHoverGlow?.(!!e.target.checked)}
+                                  />
+                                </label>
+                              </div>
+                            )}
                           </div>
-                      {searchBarRefocusEnabled && (
-                        <div className="sm:col-span-2 p-2 bg-white/5 border border-white/10 rounded space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="text-white/90 text-xs font-medium">Refocus glow mode</div>
-                            <div className="text-white/60 text-[10px]">Choose how the focus halo animates.</div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => onChangeSearchBarRefocusMode?.('letters')}
-                              aria-pressed={searchBarRefocusMode === 'letters'}
-                              className={`px-3 py-1 text-xs rounded-md border transition-colors ${
-                                searchBarRefocusMode === 'letters'
-                                  ? 'bg-cyan-500/20 border-cyan-300 text-white'
-                                  : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
-                              }`}
-                            >
-                              Mode 1 - Directional on input
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onChangeSearchBarRefocusMode?.('pulse')}
-                              aria-pressed={searchBarRefocusMode === 'pulse'}
-                              className={`px-3 py-1 text-xs rounded-md border transition-colors ${
-                                searchBarRefocusMode === 'pulse'
-                                  ? 'bg-cyan-500/20 border-cyan-300 text-white'
-                                  : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
-                              }`}
-                            >
-                              Mode 2 - Pulse then orient
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onChangeSearchBarRefocusMode?.('steady')}
-                              aria-pressed={searchBarRefocusMode === 'steady'}
-                              className={`px-3 py-1 text-xs rounded-md border transition-colors ${
-                                searchBarRefocusMode === 'steady'
-                                  ? 'bg-cyan-500/20 border-cyan-300 text-white'
-                                  : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
-                              }`}
-                            >
-                              Mode 3 - Lock direction
-                            </button>
-                          </div>
-                          <div className="text-white/50 text-[10px] leading-relaxed">
-                            Mode 1 keeps the glow tight and only leans once text is present. Mode 2 flashes a brief halo before steering toward its on-screen position. Mode 3 locks the directional lean so typing never changes it.
-                          </div>
-                          <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded cursor-pointer select-none">
-                            <div className="flex flex-col">
-                              <span className="text-white/80 text-xs">Hover glow</span>
-                              <span className="text-white/55 text-[10px]">Keep the refocus halo active while hovering over the bar.</span>
-                            </div>
-                            <input
-                              type="checkbox"
-                              checked={searchBarHoverGlow}
-                              onChange={(e) => onToggleSearchBarHoverGlow?.(!!e.target.checked)}
-                            />
+                          <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                            <span className="text-white/80 text-xs">Always use default font</span>
+                            <input type="checkbox" checked={!!settings?.appearance?.searchBar?.useDefaultFont} onChange={(e) => onToggleSearchBarUseDefaultFont?.(e.target.checked)} />
+                          </label>
+                          <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                            <span className="text-white/80 text-xs">Always use default color</span>
+                            <input type="checkbox" checked={!!settings?.appearance?.searchBar?.useDefaultColor} onChange={(e) => onToggleSearchBarUseDefaultColor?.(e.target.checked)} />
+                          </label>
+                          <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                            <span className="text-white/80 text-xs">Darker placeholder text</span>
+                            <input type="checkbox" checked={!!settings?.appearance?.searchBar?.darkerPlaceholder} onChange={(e) => onToggleSearchBarDarkerPlaceholder?.(e.target.checked)} />
                           </label>
                         </div>
-                      )}
-                    </div>
-                    <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                      <span className="text-white/80 text-xs">Always use default font</span>
-                      <input type="checkbox" checked={!!settings?.appearance?.searchBar?.useDefaultFont} onChange={(e) => onToggleSearchBarUseDefaultFont?.(e.target.checked)} />
-                    </label>
-                    <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                      <span className="text-white/80 text-xs">Always use default color</span>
-                      <input type="checkbox" checked={!!settings?.appearance?.searchBar?.useDefaultColor} onChange={(e) => onToggleSearchBarUseDefaultColor?.(e.target.checked)} />
-                    </label>
-                    <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                      <span className="text-white/80 text-xs">Darker placeholder text</span>
-                      <input type="checkbox" checked={!!settings?.appearance?.searchBar?.darkerPlaceholder} onChange={(e) => onToggleSearchBarDarkerPlaceholder?.(e.target.checked)} />
-                    </label>
-                  </div>
-                      <div className="text-white/60 text-xs mt-2">Glow uses the workspace glow color (Speed Dial settings). When transient is on, the search bar pulses briefly when the URL switches to a workspace.</div>
+                        <div className="text-white/60 text-xs mt-2">Glow uses the workspace glow color (Speed Dial settings). When transient is on, the search bar pulses briefly when the URL switches to a workspace.</div>
+                      </div>
+
                     </div>
 
-</div>
-                    
 
-                    
+
 
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
                       <div className="text-white text-sm font-medium">Inline Results</div>
@@ -2482,7 +2481,7 @@ const SettingsButton = ({
                         <select
                           value={settings?.appearance?.inline?.theme || 'terminal'}
                           onChange={(e) => window.dispatchEvent(new CustomEvent('app-inline-theme', { detail: e.target.value }))}
-                          onWheel={(e) => { try { e.currentTarget.blur() } catch {} }}
+                          onWheel={(e) => { try { e.currentTarget.blur() } catch { } }}
                           className="ml-2 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 hover:bg-white/15 focus:outline-none"
                           title="Inline theme"
                         >
@@ -2554,7 +2553,7 @@ const SettingsButton = ({
                     {/* Removed Chat & Music UI customizations */}
 
                   </div>
-                  
+
                 </TabsContent>
 
                 <TabsContent
@@ -2641,49 +2640,211 @@ const SettingsButton = ({
                       )}
                     </div>
 
-                      <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                        <div className="text-white text-sm font-medium">Last In Theming</div>
-                        <div className="text-white/60 text-xs mb-3">Reapply your most recent workspace styling when opening the default homepage.</div>
-                        <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                          <div>
-                            <div className="text-white/80 text-xs">Enable Last In</div>
-                            <div className="text-white/50 text-[11px]">Overrides the base look on <code>localhost:3000</code> with the last workspace.</div>
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
+                      <div className="text-white text-sm font-medium">Last In Theming</div>
+                      <div className="text-white/60 text-xs mb-3">Reapply your most recent workspace styling when opening the default homepage.</div>
+                      <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                        <div>
+                          <div className="text-white/80 text-xs">Enable Last In</div>
+                          <div className="text-white/50 text-[11px]">Overrides the base look on <code>localhost:3000</code> with the last workspace.</div>
+                        </div>
+                        <label className="inline-flex items-center cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={lastInEnabled}
+                            onChange={(e) => onToggleLastInEnabled?.(!!e.target.checked)}
+                            className="peer absolute opacity-0 w-0 h-0"
+                          />
+                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
                           </div>
-                          <label className="inline-flex items-center cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={lastInEnabled}
-                              onChange={(e) => onToggleLastInEnabled?.(!!e.target.checked)}
-                              className="peer absolute opacity-0 w-0 h-0"
-                            />
-                            <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
-                              <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
-                            </div>
-                          </label>
+                        </label>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        <label className={`flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded ${lastInEnabled ? '' : 'opacity-50'}`}>
+                          <div className="text-white/80 text-xs">Include glow</div>
+                          <input
+                            type="checkbox"
+                            checked={lastInIncludeGlow}
+                            onChange={(e) => onToggleLastInIncludeGlow?.(!!e.target.checked)}
+                            disabled={!lastInEnabled}
+                          />
+                        </label>
+                        <label className={`flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded ${lastInEnabled ? '' : 'opacity-50'}`}>
+                          <div className="text-white/80 text-xs">Include typography</div>
+                          <input
+                            type="checkbox"
+                            checked={lastInIncludeTypography}
+                            onChange={(e) => onToggleLastInIncludeTypography?.(!!e.target.checked)}
+                            disabled={!lastInEnabled}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
+                      <div className="text-white text-sm font-medium mb-2">Shortcut Icon Theming</div>
+                      <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                        <div>
+                          <div className="text-white/80 text-xs">Enable icon theming</div>
+                          <div className="text-white/50 text-[11px]">Apply color filters to shortcut icons.</div>
                         </div>
-                        <div className="mt-3 space-y-2">
-                          <label className={`flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded ${lastInEnabled ? '' : 'opacity-50'}`}>
-                            <div className="text-white/80 text-xs">Include glow</div>
-                            <input
-                              type="checkbox"
-                              checked={lastInIncludeGlow}
-                              onChange={(e) => onToggleLastInIncludeGlow?.(!!e.target.checked)}
-                              disabled={!lastInEnabled}
-                            />
-                          </label>
-                          <label className={`flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded ${lastInEnabled ? '' : 'opacity-50'}`}>
-                            <div className="text-white/80 text-xs">Include typography</div>
-                            <input
-                              type="checkbox"
-                              checked={lastInIncludeTypography}
-                              onChange={(e) => onToggleLastInIncludeTypography?.(!!e.target.checked)}
-                              disabled={!lastInEnabled}
-                            />
-                          </label>
-                        </div>
+                        <label className="inline-flex items-center cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={!!settings?.iconTheming?.enabled}
+                            onChange={(e) => onToggleIconThemingEnabled?.(e.target.checked)}
+                            className="peer absolute opacity-0 w-0 h-0"
+                          />
+                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                          </div>
+                        </label>
                       </div>
 
-                    { /* System-wide glow moved to Appearance */ }
+                      {settings?.iconTheming?.enabled && (
+                        <div className="mt-3 space-y-3 pl-2 border-l-2 border-white/10 ml-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-white/70 text-xs">Mode</span>
+                            <div className="flex bg-white/10 rounded p-0.5 flex-wrap gap-0.5">
+                              <button
+                                onClick={() => onSelectIconThemingMode?.('grayscale')}
+                                className={`px-2 py-1 text-[10px] rounded-sm transition-colors flex-1 ${(settings?.iconTheming?.mode || 'grayscale') === 'grayscale'
+                                  ? 'bg-white/20 text-white'
+                                  : 'text-white/50 hover:text-white/80'
+                                  }`}
+                              >
+                                Grayscale
+                              </button>
+                              <button
+                                onClick={() => onSelectIconThemingMode?.('tint')}
+                                className={`px-2 py-1 text-[10px] rounded-sm transition-colors flex-1 ${settings?.iconTheming?.mode === 'tint'
+                                  ? 'bg-white/20 text-white'
+                                  : 'text-white/50 hover:text-white/80'
+                                  }`}
+                              >
+                                Tint
+                              </button>
+                              <button
+                                onClick={() => onSelectIconThemingMode?.('monochrome')}
+                                className={`px-2 py-1 text-[10px] rounded-sm transition-colors flex-1 ${settings?.iconTheming?.mode === 'monochrome'
+                                  ? 'bg-white/20 text-white'
+                                  : 'text-white/50 hover:text-white/80'
+                                  }`}
+                              >
+                                Monochrome
+                              </button>
+                              <button
+                                onClick={() => onSelectIconThemingMode?.('grayscale_and_tint')}
+                                className={`px-2 py-1 text-[10px] rounded-sm transition-colors flex-1 ${settings?.iconTheming?.mode === 'grayscale_and_tint'
+                                  ? 'bg-white/20 text-white'
+                                  : 'text-white/50 hover:text-white/80'
+                                  }`}
+                              >
+                                Grayscale & Tint
+                              </button>
+                            </div>
+                          </div>
+
+                          {(settings?.iconTheming?.mode === 'tint' || settings?.iconTheming?.mode === 'monochrome' || settings?.iconTheming?.mode === 'grayscale_and_tint') && (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <span className="text-white/70 text-xs">Tint color</span>
+                                <input
+                                  type="color"
+                                  value={settings?.iconTheming?.color || '#ff0000'}
+                                  onChange={(e) => onChangeIconThemingColor?.(e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-white/70 text-xs">Intensity</span>
+                                  <span className="text-white/50 text-[10px]">{Math.round((settings?.iconTheming?.opacity ?? 0.5) * 100)}%</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="1"
+                                  step="0.05"
+                                  value={settings?.iconTheming?.opacity ?? 0.5}
+                                  onChange={(e) => onChangeIconThemingOpacity?.(parseFloat(e.target.value))}
+                                  className="w-full"
+                                />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Workspace Icon Theming */}
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
+                      <div className="text-white text-sm font-medium mb-2">Workspace Icon Theming</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {workspaces.map(ws => {
+                          const isAnchored = anchoredWorkspaceId === ws.id;
+                          const wsSettings = settings?.iconTheming?.workspaces?.[ws.id] || {};
+                          const wsMode = wsSettings.mode || 'default';
+                          const wsColor = wsSettings.color || settings?.iconTheming?.color || '#ff0000';
+                          const wsOpacity = wsSettings.opacity ?? settings?.iconTheming?.opacity ?? 0.5;
+
+                          return (
+                            <div key={ws.id} className={`p-2 bg-white/5 border border-white/10 rounded ${isAnchored ? 'opacity-40' : ''}`}>
+                              <div className="text-white/70 text-xs mb-1">{ws.name}{isAnchored ? ' (Anchored)' : ''}</div>
+
+                              <div className="mb-2">
+                                <select
+                                  className="w-full px-2 py-1 bg-white/10 border border-white/20 rounded text-white/90 text-xs"
+                                  value={wsMode}
+                                  onChange={(e) => onChangeWorkspaceIconThemeMode?.(ws.id, e.target.value)}
+                                  disabled={isAnchored || !settings?.iconTheming?.enabled}
+                                  title={isAnchored ? 'Anchored workspace inherits global settings.' : undefined}
+                                >
+                                  <option value="default">Default</option>
+                                  <option value="grayscale">Grayscale</option>
+                                  <option value="tint">Tint</option>
+                                  <option value="monochrome">Monochrome</option>
+                                  <option value="grayscale_and_tint">Grayscale & Tint</option>
+                                </select>
+                              </div>
+
+                              {(wsMode === 'tint' || wsMode === 'monochrome' || wsMode === 'grayscale_and_tint') && (
+                                <>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-white/60 text-xs">Color</span>
+                                    <input
+                                      type="color"
+                                      value={wsColor}
+                                      onChange={(e) => onChangeWorkspaceIconThemeColor?.(ws.id, e.target.value)}
+                                      disabled={isAnchored || !settings?.iconTheming?.enabled}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-white/60 text-xs w-12">Opacity</span>
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="1"
+                                      step="0.05"
+                                      value={wsOpacity}
+                                      onChange={(e) => onChangeWorkspaceIconThemeOpacity?.(ws.id, parseFloat(e.target.value))}
+                                      className="flex-1"
+                                      disabled={isAnchored || !settings?.iconTheming?.enabled}
+                                    />
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div className="text-white/60 text-xs mt-2">Override global icon theming for specific workspaces.</div>
+                      {anchoredWorkspaceId && (
+                        <div className="text-white/45 text-[10px] mt-2">Anchored workspace inherits global icon theming settings.</div>
+                      )}
+                    </div>
+
+                    { /* System-wide glow moved to Appearance */}
 
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
                       <div className="text-white text-sm font-medium mb-2">Default outer glow</div>
@@ -2763,11 +2924,10 @@ const SettingsButton = ({
                           <button
                             key={opt.id}
                             onClick={() => onSelectFontPreset?.(opt.id)}
-                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                              (settings?.appearance?.fontPreset || 'industrial') === opt.id
-                                ? 'bg-cyan-500/20 border-cyan-400 text-white'
-                                : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                            }`}
+                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${(settings?.appearance?.fontPreset || 'industrial') === opt.id
+                              ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                              : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                              }`}
                           >
                             {opt.label}
                           </button>
@@ -2857,7 +3017,7 @@ const SettingsButton = ({
                     </div>
 
                   </div>
-                    
+
                 </TabsContent>
 
                 <TabsContent
@@ -2897,11 +3057,10 @@ const SettingsButton = ({
                           <button
                             key={opt.id}
                             onClick={() => onSelectClockPreset?.(opt.id)}
-                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                              clockLayoutPreset === opt.id
-                                ? 'bg-cyan-500/20 border-cyan-400 text-white'
-                                : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                            }`}
+                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${clockLayoutPreset === opt.id
+                              ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                              : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                              }`}
                           >
                             {opt.label}
                           </button>
@@ -2921,11 +3080,10 @@ const SettingsButton = ({
                           <button
                             key={opt.id}
                             onClick={() => onSelectWeatherPreset?.(opt.id)}
-                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                              weatherLayoutPreset === opt.id
-                                ? 'bg-cyan-500/20 border-cyan-400 text-white'
-                                : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                            }`}
+                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${weatherLayoutPreset === opt.id
+                              ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                              : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                              }`}
                           >
                             {opt.label}
                           </button>
@@ -3016,18 +3174,16 @@ const SettingsButton = ({
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => onToggleUnits?.(false)}
-                          className={`px-3 py-1 rounded-full text-sm border ${
-                            (widgetsSettings?.units || 'metric') === 'metric' ? 'bg-cyan-500/20 border-cyan-400 text-white' : 'bg-white/5 border-white/20 text-white/70'
-                          }`}
+                          className={`px-3 py-1 rounded-full text-sm border ${(widgetsSettings?.units || 'metric') === 'metric' ? 'bg-cyan-500/20 border-cyan-400 text-white' : 'bg-white/5 border-white/20 text-white/70'
+                            }`}
                           title="Celsius"
                         >
                           C
                         </button>
                         <button
                           onClick={() => onToggleUnits?.(true)}
-                          className={`px-3 py-1 rounded-full text-sm border ${
-                            (widgetsSettings?.units || 'metric') === 'imperial' ? 'bg-cyan-500/20 border-cyan-400 text-white' : 'bg-white/5 border-white/20 text-white/70'
-                          }`}
+                          className={`px-3 py-1 rounded-full text-sm border ${(widgetsSettings?.units || 'metric') === 'imperial' ? 'bg-cyan-500/20 border-cyan-400 text-white' : 'bg-white/5 border-white/20 text-white/70'
+                            }`}
                           title="Fahrenheit"
                         >
                           F
@@ -3095,7 +3251,7 @@ const SettingsButton = ({
                         >Use default</button>
                       </div>
                       <div className="flex gap-2 items-center mt-2">
-                        <span className="text-white/70 text-xs" style={{minWidth:'6rem'}}>Music token</span>
+                        <span className="text-white/70 text-xs" style={{ minWidth: '6rem' }}>Music token</span>
                         <input
                           type="text"
                           defaultValue={settings?.general?.musicToken || ''}
@@ -3159,10 +3315,10 @@ const SettingsButton = ({
 
                     {/* Preset 2 Styling controls removed as requested */}
 
-                    
+
 
                   </div>
-                  
+
                 </TabsContent>
 
                 <TabsContent
@@ -3187,7 +3343,7 @@ const SettingsButton = ({
                             className="text-sm px-3 py-2 rounded-md bg-yellow-400/85 text-black font-semibold hover:bg-yellow-300/90 transition-colors border border-black/10 shadow"
                             title="Buy me a coffee"
                             onClick={() => {
-                              try { window.open('https://buymeacoffee.com/vahagnb', '_blank', 'noopener,noreferrer') } catch {}
+                              try { window.open('https://buymeacoffee.com/vahagnb', '_blank', 'noopener,noreferrer') } catch { }
                             }}
                           >
                             Buy me a coffee
@@ -3224,7 +3380,7 @@ const SettingsButton = ({
                                     const url = `${window.location.origin.replace(/\/+$/, '')}/extensions/history-helper/`
                                     window.open(url, '_blank', 'noopener,noreferrer')
                                   } catch {
-                                    try { alert('To install History Helper, please follow the manual instructions shown below.') } catch {}
+                                    try { alert('To install History Helper, please follow the manual instructions shown below.') } catch { }
                                   }
                                 }}
                               >
@@ -3291,7 +3447,7 @@ const SettingsButton = ({
                               <li>Add rules like:</li>
                             </ol>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {[ 
+                              {[
                                 { url: 'http://localhost:3000/home', workspace: 'Home' },
                                 { url: 'http://localhost:3000/dev', workspace: 'Dev' },
                                 { url: 'http://localhost:3000/cuny', workspace: 'CUNY' },

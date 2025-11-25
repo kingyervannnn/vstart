@@ -8,9 +8,11 @@ import WeatherWidget from "./components/WeatherWidget";
 import MusicController from "./components/MusicController";
 import SettingsButton from "./components/SettingsButton";
 import BackgroundRenderer from "./components/BackgroundRenderer";
+import IconThemeFilters from "./components/IconThemeFilters";
 import ErrorBoundary from "./components/ErrorBoundary";
 import {
   getBackgroundURLById,
+  getBackgroundRecordById,
   saveBackgroundFile,
 } from "./lib/idb-backgrounds";
 import { trySaveIconToProject } from "./lib/icon-storage";
@@ -180,6 +182,31 @@ const deepMergeAppearance = (base, override) => {
   return merged;
 };
 
+const getAppearanceDiff = (base, target) => {
+  const diff = {};
+  const allKeys = new Set([...Object.keys(base || {}), ...Object.keys(target || {})]);
+
+  for (const key of allKeys) {
+    const baseVal = base?.[key];
+    const targetVal = target?.[key];
+
+    if (JSON.stringify(baseVal) === JSON.stringify(targetVal)) continue;
+
+    if (
+      baseVal && typeof baseVal === 'object' && !Array.isArray(baseVal) &&
+      targetVal && typeof targetVal === 'object' && !Array.isArray(targetVal)
+    ) {
+      const nestedDiff = getAppearanceDiff(baseVal, targetVal);
+      if (Object.keys(nestedDiff).length > 0) {
+        diff[key] = nestedDiff;
+      }
+    } else if (targetVal !== undefined) {
+      diff[key] = targetVal;
+    }
+  }
+  return diff;
+};
+
 const resolveAppearanceProfileForWorkspace = (
   baseAppearance,
   state,
@@ -326,6 +353,8 @@ function App() {
       colorlessPreview: true,
       workspaceHeaderColorMode: {},
       glowTransientByWorkspace: {},
+      maxGlow: 2.5,
+      maxGlowByWorkspace: {},
     },
     widgets: {
       showSeconds: false,
@@ -371,6 +400,7 @@ function App() {
         blurPx: 28,
         matchWorkspaceTextColor: true,
         matchSearchBarBlur: true,
+        disableButtonBackgrounds: false,
       },
       searchBar: {
         outline: false,
@@ -393,6 +423,8 @@ function App() {
         useDefaultColor: false,
         inlineAiButtonGlow: true,
         darkerPlaceholder: true,
+        maxGlow: 2.5,
+        matchSpeedDialMaxGlow: false,
       },
       matchWorkspaceTextColor: true,
       matchWorkspaceAccentColor: true,
@@ -437,6 +469,11 @@ function App() {
       autoUrlDoubleClick: false,
       capSuggestions7: false,
       allowScroll: true,
+      scrollToChangeWorkspace: false,
+      scrollToChangeWorkspaceIncludeSpeedDial: false,
+      scrollToChangeWorkspaceIncludeWholeColumn: false,
+      scrollToChangeWorkspaceResistance: false,
+      scrollToChangeWorkspaceResistanceIntensity: 100,
       // Use same-origin proxy to avoid private network preflight issues
       musicBackend: "/music/api/v1",
       voice: {
@@ -495,7 +532,7 @@ function App() {
       } else {
         localStorage.removeItem("vivaldi-workspace-backgrounds");
       }
-    } catch {}
+    } catch { }
   }, []);
 
   const updateWorkspaceBackgroundState = useCallback(
@@ -516,7 +553,13 @@ function App() {
     const type = String(meta.type || "").toLowerCase();
     if (type === "custom" && meta.id) {
       try {
-        const url = await getBackgroundURLById(meta.id);
+        const record = await getBackgroundRecordById(meta.id);
+        if (!record) return null;
+        const url = URL.createObjectURL(record.blob);
+        // Enrich meta with mime type if missing
+        if (record.type && !meta.mime) {
+          meta.mime = record.type;
+        }
         return url || null;
       } catch {
         return null;
@@ -537,7 +580,7 @@ function App() {
           if (entry?.meta?.type === "custom" && entry.src) {
             try {
               URL.revokeObjectURL(entry.src);
-            } catch {}
+            } catch { }
           }
           delete next[workspaceId];
           return next;
@@ -561,7 +604,7 @@ function App() {
         if (src && resolvedMeta?.type === "custom") {
           try {
             URL.revokeObjectURL(src);
-          } catch {}
+          } catch { }
         }
         updateWorkspaceBackgroundState((prev) => {
           if (!prev[workspaceId]) return prev;
@@ -570,7 +613,7 @@ function App() {
           if (entry?.meta?.type === "custom" && entry.src) {
             try {
               URL.revokeObjectURL(entry.src);
-            } catch {}
+            } catch { }
           }
           delete next[workspaceId];
           return next;
@@ -592,7 +635,7 @@ function App() {
         ) {
           try {
             URL.revokeObjectURL(previous.src);
-          } catch {}
+          } catch { }
         }
         next[workspaceId] = { meta: resolvedMeta, src };
         return next;
@@ -601,19 +644,41 @@ function App() {
     [resolveBackgroundSource, updateWorkspaceBackgroundState],
   );
 
-  // Keep stored suggestions blur aligned with search bar blur while Match Bar is enabled
+  // Restore workspace backgrounds from localStorage
   useEffect(() => {
     const raw = localStorage.getItem("vivaldi-workspace-backgrounds");
     if (!raw) return;
-    try {
-      const metaMap = JSON.parse(raw);
-      if (!metaMap || typeof metaMap !== "object") return;
-      Object.entries(metaMap).forEach(([id, meta]) => {
-        if (meta) {
-          setWorkspaceBackgroundMeta(id, meta).catch(() => {});
+    (async () => {
+      try {
+        const metaMap = JSON.parse(raw);
+        if (!metaMap || typeof metaMap !== "object") return;
+        let metaMapUpdated = false;
+        // Enrich meta with mime type from IndexedDB if missing
+        for (const [id, meta] of Object.entries(metaMap)) {
+          if (meta && meta.type === "custom" && meta.id && !meta.mime) {
+            try {
+              const record = await getBackgroundRecordById(meta.id);
+              if (record && record.type) {
+                meta.mime = record.type;
+                metaMapUpdated = true;
+              }
+            } catch { }
+          }
         }
-      });
-    } catch {}
+        // Update localStorage with enriched meta if any were updated
+        if (metaMapUpdated) {
+          try {
+            localStorage.setItem("vivaldi-workspace-backgrounds", JSON.stringify(metaMap));
+          } catch { }
+        }
+        // Restore all workspace backgrounds
+        for (const [id, meta] of Object.entries(metaMap)) {
+          if (meta) {
+            setWorkspaceBackgroundMeta(id, meta).catch(() => { });
+          }
+        }
+      } catch { }
+    })();
   }, [setWorkspaceBackgroundMeta]);
 
   useEffect(() => {
@@ -638,7 +703,7 @@ function App() {
         next.background = nextBackground;
         return next;
       });
-    } catch {}
+    } catch { }
   }, []);
 
 
@@ -653,7 +718,7 @@ function App() {
           widgets: { ...prev.widgets, ...parsed },
         }));
       }
-    } catch {}
+    } catch { }
   }, []);
 
   // Load license state from localStorage (if present)
@@ -671,7 +736,7 @@ function App() {
           ...parsed,
         },
       }));
-    } catch {}
+    } catch { }
   }, []);
 
   // Load Appearance and manual text color on mount
@@ -716,8 +781,12 @@ function App() {
           if (lastManual === "classic" || lastManual === "modern") {
             a.masterLayout = lastManual;
           }
-        } catch {}
+        } catch { }
         if (a?.searchBar) {
+          // Ensure maxGlow has a default value
+          if (typeof a.searchBar.maxGlow !== "number" || isNaN(a.searchBar.maxGlow)) {
+            a.searchBar.maxGlow = 2.5;
+          }
           const allowedRefocusModes = ["letters", "pulse", "steady"];
           if (
             typeof a.searchBar.refocusMode !== "string" ||
@@ -790,7 +859,7 @@ function App() {
               },
             }));
           }
-        } catch {}
+        } catch { }
       }
       const gRaw = localStorage.getItem("generalSettings");
       if (gRaw) {
@@ -857,7 +926,7 @@ function App() {
               lastIn: { ...(prev.theme?.lastIn || {}), ...(parsed || {}) },
             },
           }));
-        } catch {}
+        } catch { }
       }
       const sdRaw = localStorage.getItem("speedDialSettings");
       if (sdRaw) {
@@ -883,6 +952,18 @@ function App() {
         }
         if (typeof next.landscapeOffset !== "number") {
           next.landscapeOffset = 0;
+        }
+        if (
+          typeof next.maxGlow !== "number" ||
+          !Number.isFinite(next.maxGlow)
+        ) {
+          next.maxGlow = 2.5;
+        }
+        if (
+          !next.maxGlowByWorkspace ||
+          typeof next.maxGlowByWorkspace !== "object"
+        ) {
+          next.maxGlowByWorkspace = {};
         }
         if (
           !next.dialLayoutOverrides ||
@@ -932,14 +1013,14 @@ function App() {
           speedDial: { ...prev.speedDial, ...next },
         }));
       }
-    } catch {}
+    } catch { }
   }, []);
 
   // Persist Widgets settings when changed
   useEffect(() => {
     try {
       localStorage.setItem("widgetsSettings", JSON.stringify(settings.widgets));
-    } catch {}
+    } catch { }
   }, [settings.widgets]);
 
   // Persist Appearance + manual text color + speed dial settings
@@ -949,7 +1030,7 @@ function App() {
         "appearanceSettings",
         JSON.stringify(settings.appearance),
       );
-    } catch {}
+    } catch { }
   }, [settings.appearance]);
   useEffect(() => {
     try {
@@ -959,34 +1040,34 @@ function App() {
           normalizeAppearanceWorkspaceState(settings.appearanceWorkspaces),
         ),
       );
-    } catch {}
+    } catch { }
   }, [settings.appearanceWorkspaces]);
   useEffect(() => {
     try {
       localStorage.setItem("searchSettings", JSON.stringify(settings.search));
-    } catch {}
+    } catch { }
   }, [settings.search]);
   useEffect(() => {
     try {
       localStorage.setItem("generalSettings", JSON.stringify(settings.general));
-    } catch {}
+    } catch { }
   }, [settings.general]);
   useEffect(() => {
     try {
       localStorage.setItem("aiSettings", JSON.stringify(settings.ai || {}));
-    } catch {}
+    } catch { }
   }, [settings.ai]);
   useEffect(() => {
     try {
       localStorage.setItem("manualTextColor", settings.theme.colors.primary);
-    } catch {}
+    } catch { }
   }, [settings.theme.colors.primary]);
 
   // Persist manual accent color when changed
   useEffect(() => {
     try {
       localStorage.setItem("manualAccentColor", settings.theme.colors.accent);
-    } catch {}
+    } catch { }
   }, [settings.theme.colors.accent]);
   useEffect(() => {
     try {
@@ -994,7 +1075,7 @@ function App() {
         "themeLastInSettings",
         JSON.stringify(settings.theme.lastIn || {}),
       );
-    } catch {}
+    } catch { }
   }, [settings.theme.lastIn]);
   useEffect(() => {
     try {
@@ -1028,6 +1109,10 @@ function App() {
           tabHoverShade: !!s.tabHoverShade,
           tabHoverStyle:
             s.tabHoverStyle || (s.tabHoverShade ? "shade-color" : "none"),
+          maxGlow: Number.isFinite(Number(s.maxGlow))
+            ? Number(s.maxGlow)
+            : 2.5,
+          maxGlowByWorkspace: s.maxGlowByWorkspace || {},
           verticalOffset: Number(s.verticalOffset || 0),
           landscapeOffset: Number(s.landscapeOffset || 0),
           dialLayoutOverrides: s.dialLayoutOverrides || {},
@@ -1081,7 +1166,7 @@ function App() {
           glowHover: !!s.glowHover,
         }),
       );
-    } catch {}
+    } catch { }
   }, [
     settings.speedDial.blurPx,
     settings.speedDial.transparentBg,
@@ -1103,6 +1188,8 @@ function App() {
     settings.speedDial.tabGlowUseWorkspaceColor,
     settings.speedDial.tabHoverShade,
     settings.speedDial.tabHoverStyle,
+    settings.speedDial.maxGlow,
+    settings.speedDial.maxGlowByWorkspace,
     settings.speedDial.workspaceTextColors,
     settings.speedDial.workspaceTextFonts,
     settings.speedDial.workspaceTextByUrl,
@@ -1249,7 +1336,7 @@ function App() {
     try {
       window.__APP_WORKSPACES__ = workspaces;
       window.__ACTIVE_WORKSPACE_ID__ = activeWorkspaceId;
-    } catch {}
+    } catch { }
   }, [workspaces, activeWorkspaceId]);
 
   useEffect(() => {
@@ -1276,7 +1363,7 @@ function App() {
     setLastHardWorkspaceId(hardWorkspaceId);
     try {
       localStorage.setItem("lastHardWorkspaceId", hardWorkspaceId);
-    } catch {}
+    } catch { }
   }, [hardWorkspaceId, lastHardWorkspaceId]);
 
   useEffect(() => {
@@ -1319,7 +1406,7 @@ function App() {
     [settings.appearanceWorkspaces],
   );
   const appearanceWorkspacesEnabled = !!appearanceWorkspacesState.enabled;
-  
+
   // Create ref for applyAppearanceEdit early so handlers can use it
   const applyAppearanceEditRef = useRef(null);
   const appearanceApplyAllChoiceRef = useRef(null);
@@ -1396,6 +1483,11 @@ function App() {
         settings.speedDial?.matchHeaderFontByWorkspace,
         appearanceRuntimeTargetId,
       );
+      const effectiveMaxGlow = resolveWorkspaceScopedToggle(
+        settings.speedDial?.maxGlow,
+        settings.speedDial?.maxGlowByWorkspace,
+        appearanceRuntimeTargetId,
+      );
       return {
         ...settings,
         appearance: activeAppearance,
@@ -1403,6 +1495,9 @@ function App() {
           ...(settings.speedDial || {}),
           matchHeaderColor: !!effectiveMatchHeaderColor,
           matchHeaderFont: !!effectiveMatchHeaderFont,
+          maxGlow: Number.isFinite(Number(effectiveMaxGlow))
+            ? Number(effectiveMaxGlow)
+            : Number(settings.speedDial?.maxGlow ?? 2.5),
         },
       };
     },
@@ -1425,6 +1520,11 @@ function App() {
         settings.speedDial?.matchHeaderFontByWorkspace,
         appearanceEditingTargetId,
       );
+      const effectiveMaxGlow = resolveWorkspaceScopedToggle(
+        settings.speedDial?.maxGlow,
+        settings.speedDial?.maxGlowByWorkspace,
+        appearanceEditingTargetId,
+      );
       return {
         ...settings,
         appearance: editingAppearance,
@@ -1432,6 +1532,9 @@ function App() {
           ...(settings.speedDial || {}),
           matchHeaderColor: !!effectiveMatchHeaderColor,
           matchHeaderFont: !!effectiveMatchHeaderFont,
+          maxGlow: Number.isFinite(Number(effectiveMaxGlow))
+            ? Number(effectiveMaxGlow)
+            : Number(settings.speedDial?.maxGlow ?? 2.5),
         },
       };
     },
@@ -1477,6 +1580,18 @@ function App() {
     workspaceBackgrounds,
     currentBackground,
     workspaceBackgroundsEnabled,
+  ]);
+  const activeBackgroundMeta = useMemo(() => {
+    if (workspaceBackgroundsEnabled && backgroundWorkspaceId) {
+      const entry = workspaceBackgrounds[backgroundWorkspaceId];
+      if (entry?.meta) return entry.meta;
+    }
+    return globalBackgroundMeta;
+  }, [
+    workspaceBackgroundsEnabled,
+    backgroundWorkspaceId,
+    workspaceBackgrounds,
+    globalBackgroundMeta,
   ]);
   const activeBackgroundPlaceholder = useMemo(() => {
     const resolvePlaceholderFromMeta = (meta) => {
@@ -1659,7 +1774,7 @@ function App() {
       const { [id]: _, ...rest } = prev;
       return rest;
     });
-    setWorkspaceBackgroundMeta(id, null).catch(() => {});
+    setWorkspaceBackgroundMeta(id, null).catch(() => { });
     if (hoveredWorkspaceId === id) {
       setHoveredWorkspaceId(null);
     }
@@ -1737,7 +1852,7 @@ function App() {
     if (!loadedPersist) return;
     try {
       localStorage.setItem("workspaces", JSON.stringify(workspaces));
-    } catch {}
+    } catch { }
   }, [workspaces, loadedPersist]);
   useEffect(() => {
     if (!loadedPersist) return;
@@ -1754,7 +1869,7 @@ function App() {
     if (!loadedPersist) return;
     try {
       localStorage.setItem("activeWorkspaceId", activeWorkspaceId);
-    } catch {}
+    } catch { }
   }, [activeWorkspaceId, loadedPersist]);
 
   useEffect(() => {
@@ -1810,10 +1925,10 @@ function App() {
           setSpeedDials(next);
           try {
             localStorage.setItem("speedDials", JSON.stringify(next));
-          } catch {}
+          } catch { }
         }
         localStorage.setItem(onceKey, "1");
-      } catch {}
+      } catch { }
     })();
   }, [loadedPersist]);
 
@@ -2113,20 +2228,20 @@ function App() {
           searxngBaseUrl: String(e.detail || "/searxng"),
         },
       }));
-      const onImgbbApiKey = (e) => {
-        console.log('onImgbbApiKey handler called with:', e.detail ? e.detail.substring(0, 10) + '...' : 'empty')
-        setSettings((prev) => {
-          const newSettings = {
-            ...prev,
-            search: {
-              ...(prev.search || {}),
-              imgbbApiKey: String(e.detail || ""),
-            },
-          }
-          console.log('Settings updated, imgbbApiKey:', newSettings.search?.imgbbApiKey ? newSettings.search.imgbbApiKey.substring(0, 10) + '...' : 'empty')
-          return newSettings
-        })
-      }
+    const onImgbbApiKey = (e) => {
+      console.log('onImgbbApiKey handler called with:', e.detail ? e.detail.substring(0, 10) + '...' : 'empty')
+      setSettings((prev) => {
+        const newSettings = {
+          ...prev,
+          search: {
+            ...(prev.search || {}),
+            imgbbApiKey: String(e.detail || ""),
+          },
+        }
+        console.log('Settings updated, imgbbApiKey:', newSettings.search?.imgbbApiKey ? newSettings.search.imgbbApiKey.substring(0, 10) + '...' : 'empty')
+        return newSettings
+      })
+    }
     const onImageSearchInlineProvider = (e) =>
       setSettings((prev) => ({
         ...prev,
@@ -2217,7 +2332,7 @@ function App() {
           layoutOverrideRef.current = { active: true, prev: "classic" };
           try {
             localStorage.setItem("lastManualMasterLayout", "classic");
-          } catch {}
+          } catch { }
           setTempModernOverride(true);
         }
       } else {
@@ -2331,37 +2446,37 @@ function App() {
     window.addEventListener("app-ai-web-searxng-base", onAiWebSearxngBase);
     window.addEventListener("app-set-header-color-mode", onHeaderMode);
     window.addEventListener("vstart-activate-license", onLicenseActivated);
-    
+
     // Global drag-and-drop handlers for images - allow dropping images anywhere on the page
     const handleGlobalDragOver = (e) => {
       // Only handle if dragging files (images)
       if (!e?.dataTransfer?.types?.includes('Files')) return;
-      
+
       const target = e.target;
       // Check if we're over the search bar or its children - if so, let it handle it
       const isOverSearchBar = target?.closest?.('[data-search-box]');
-      
+
       // If not over search bar, allow drop by preventing default
       if (!isOverSearchBar) {
         e.preventDefault();
         e.stopPropagation();
       }
     };
-    
+
     const handleGlobalDrop = async (e) => {
       try {
         // Only handle if files are being dropped
         if (!e?.dataTransfer?.files?.length) return;
-        
+
         const target = e.target;
         // Check if we're dropping on the search bar or its children - if so, let it handle it
         const isOverSearchBar = target?.closest?.('[data-search-box]');
-        
+
         // If not over search bar, handle it globally
         if (!isOverSearchBar) {
           const files = Array.from(e.dataTransfer.files);
           const imageFile = files.find(f => f.type.startsWith('image/'));
-          
+
           if (imageFile && searchBoxRef.current?.attachImage) {
             e.preventDefault();
             e.stopPropagation();
@@ -2372,12 +2487,12 @@ function App() {
         console.error('Global image drop failed:', error);
       }
     };
-    
+
     // Add global event listeners - use capture phase to catch before other handlers
     // but check if target is search bar to avoid interfering
     document.addEventListener('dragover', handleGlobalDragOver, true);
     document.addEventListener('drop', handleGlobalDrop, true);
-    
+
     return () => {
       // Remove global drag-and-drop listeners
       document.removeEventListener('dragover', handleGlobalDragOver, true);
@@ -2506,13 +2621,38 @@ function App() {
     };
   }, []);
 
+  // Detect scroll wheel button press (middle mouse button) and toggle "Double-click for workspace URL"
+  useEffect(() => {
+    const handleMiddleMouseButton = (e) => {
+      // Middle mouse button (scroll wheel press) is button === 1
+      if (e.button === 1) {
+        setSettings((prev) => {
+          const currentValue = prev.general?.autoUrlDoubleClick || false;
+          return {
+            ...prev,
+            general: {
+              ...(prev.general || {}),
+              autoUrlDoubleClick: !currentValue,
+            },
+          };
+        });
+      }
+    };
+
+    // Listen for mousedown events to detect middle button press
+    window.addEventListener("mousedown", handleMiddleMouseButton);
+    return () => {
+      window.removeEventListener("mousedown", handleMiddleMouseButton);
+    };
+  }, []);
+
   // Detect and neutralize page zoom so geometry stays constant unplugged/plugged
   useEffect(() => {
     const handle = () => {
       try {
         const z =
           window.visualViewport &&
-          typeof window.visualViewport.scale === "number"
+            typeof window.visualViewport.scale === "number"
             ? window.visualViewport.scale
             : 1;
         setUiScale(z && z > 0 ? 1 / z : 1);
@@ -2562,15 +2702,15 @@ function App() {
         setCurrentBackground(defaultBackground);
         try {
           localStorage.setItem("vivaldi-current-background-meta", JSON.stringify(defaultMeta));
-        } catch {}
+        } catch { }
         return;
       }
       try {
         const meta = JSON.parse(metaStr);
         if (meta?.type === "custom" && meta?.id) {
           try {
-            const url = await getBackgroundURLById(meta.id);
-            if (!url || cancelled) {
+            const record = await getBackgroundRecordById(meta.id);
+            if (!record || cancelled) {
               // If custom background doesn't exist, fall back to default background
               if (!cancelled) {
                 const fallbackMeta = { type: "builtin", id: "default-bg", url: defaultBackground };
@@ -2578,21 +2718,33 @@ function App() {
                 setCurrentBackground(defaultBackground);
                 try {
                   localStorage.setItem("vivaldi-current-background-meta", JSON.stringify(fallbackMeta));
-                } catch {}
+                } catch { }
               }
               return;
             }
+            const url = URL.createObjectURL(record.blob);
             if (
               globalBackgroundObjectUrlRef.current &&
               globalBackgroundObjectUrlRef.current !== url
             ) {
               try {
                 URL.revokeObjectURL(globalBackgroundObjectUrlRef.current);
-              } catch {}
+              } catch { }
             }
             globalBackgroundObjectUrlRef.current = url;
-            setGlobalBackgroundMeta(meta);
+            // Ensure mime type is included in meta
+            const enrichedMeta = { ...meta };
+            if (record.type && !enrichedMeta.mime) {
+              enrichedMeta.mime = record.type;
+            }
+            setGlobalBackgroundMeta(enrichedMeta);
             setCurrentBackground(url);
+            // Update localStorage with enriched meta if mime was missing
+            if (record.type && !meta.mime) {
+              try {
+                localStorage.setItem("vivaldi-current-background-meta", JSON.stringify(enrichedMeta));
+              } catch { }
+            }
           } catch {
             if (cancelled) return;
             // If custom background doesn't exist, fall back to default background
@@ -2601,13 +2753,13 @@ function App() {
             setCurrentBackground(defaultBackground);
             try {
               localStorage.setItem("vivaldi-current-background-meta", JSON.stringify(fallbackMeta));
-            } catch {}
+            } catch { }
           }
         } else if (meta?.url) {
           if (globalBackgroundObjectUrlRef.current) {
             try {
               URL.revokeObjectURL(globalBackgroundObjectUrlRef.current);
-            } catch {}
+            } catch { }
             globalBackgroundObjectUrlRef.current = null;
           }
           setGlobalBackgroundMeta(meta);
@@ -2652,14 +2804,14 @@ function App() {
     try {
       const value = settings.background?.followSlug ? "1" : "0";
       localStorage.setItem("vivaldi-background-follow-slug", value);
-    } catch {}
+    } catch { }
   }, [settings.background?.followSlug]);
 
   useEffect(() => {
     try {
       const value = settings.background?.workspaceEnabled === false ? "0" : "1";
       localStorage.setItem("vivaldi-background-workspaces-enabled", value);
-    } catch {}
+    } catch { }
   }, [settings.background?.workspaceEnabled]);
 
   useEffect(
@@ -2667,13 +2819,13 @@ function App() {
       if (globalBackgroundObjectUrlRef.current) {
         try {
           URL.revokeObjectURL(globalBackgroundObjectUrlRef.current);
-        } catch {}
+        } catch { }
       }
       Object.values(workspaceBackgroundsRef.current).forEach((entry) => {
         if (entry?.meta?.type === "custom" && entry.src) {
           try {
             URL.revokeObjectURL(entry.src);
-          } catch {}
+          } catch { }
         }
       });
     },
@@ -2695,7 +2847,7 @@ function App() {
     const z = Number(settings.background?.zoom || 1);
     try {
       localStorage.setItem("vivaldi-background-zoom", String(z));
-    } catch {}
+    } catch { }
   }, [settings.background?.zoom]);
 
   // Handle background changes from BackgroundManager
@@ -2709,7 +2861,7 @@ function App() {
       ) {
         try {
           URL.revokeObjectURL(globalBackgroundObjectUrlRef.current);
-        } catch {}
+        } catch { }
         globalBackgroundObjectUrlRef.current = null;
       }
 
@@ -2721,7 +2873,7 @@ function App() {
       ) {
         try {
           URL.revokeObjectURL(globalBackgroundObjectUrlRef.current);
-        } catch {}
+        } catch { }
         globalBackgroundObjectUrlRef.current = null;
       }
 
@@ -2730,7 +2882,7 @@ function App() {
 
       try {
         localStorage.setItem("vivaldi-current-background", newBackground);
-      } catch {}
+      } catch { }
 
       try {
         if (meta) {
@@ -2741,7 +2893,7 @@ function App() {
         } else {
           localStorage.removeItem("vivaldi-current-background-meta");
         }
-      } catch {}
+      } catch { }
     },
     [globalBackgroundMeta],
   );
@@ -2768,7 +2920,7 @@ function App() {
         });
         try {
           URL.revokeObjectURL(url);
-        } catch {}
+        } catch { }
         return {
           id: meta.id,
           name: meta.name || `background-${meta.id}`,
@@ -2846,7 +2998,7 @@ function App() {
         setTimeout(() => {
           try {
             URL.revokeObjectURL(url);
-          } catch {}
+          } catch { }
         }, 5000);
         alert("VSTART configuration exported successfully.");
       } catch (err) {
@@ -2938,9 +3090,9 @@ function App() {
 
         Object.entries(remappedWorkspaceBgMeta).forEach(([id, meta]) => {
           if (meta) {
-            setWorkspaceBackgroundMeta(id, meta).catch(() => {});
+            setWorkspaceBackgroundMeta(id, meta).catch(() => { });
           } else {
-            setWorkspaceBackgroundMeta(id, null).catch(() => {});
+            setWorkspaceBackgroundMeta(id, null).catch(() => { });
           }
         });
 
@@ -3006,7 +3158,7 @@ function App() {
   const handleWorkspaceBackgroundChange = useCallback(
     (workspaceId, url, meta) => {
       if (!workspaceId) return;
-      setWorkspaceBackgroundMeta(workspaceId, meta, url).catch(() => {});
+      setWorkspaceBackgroundMeta(workspaceId, meta, url).catch(() => { });
     },
     [setWorkspaceBackgroundMeta],
   );
@@ -3045,7 +3197,7 @@ function App() {
             previewTargetId,
             "soft",
           );
-        } catch {}
+        } catch { }
         setLastAppearancePreviewId(previewTargetId);
       }
       setSettings((prev) => {
@@ -3137,35 +3289,43 @@ function App() {
         const baseAppearance = prev.appearance || {};
         const overrides = state.overrides || {};
         const isMasterTarget = targetId === MASTER_APPEARANCE_ID;
-        const useOverride =
-          state.enabled && !isMasterTarget;
-        // When editing master override, use existing master override if it exists, otherwise use base
-        // When editing workspace override, use workspace override if it exists, otherwise use base
+        const useOverride = state.enabled && !isMasterTarget;
+
+        // Determine Parent Layer (what we inherit from)
+        const masterOverride = overrides[MASTER_APPEARANCE_ID];
+        // If editing Master, parent is Base. If editing Workspace, parent is Base+Master.
+        const parentLayer = isMasterTarget
+          ? baseAppearance
+          : (masterOverride ? deepMergeAppearance(baseAppearance, masterOverride) : baseAppearance);
+
+        // Determine Current Resolved State (what we see)
+        // If editing Master, current is Master (or Base).
+        // If editing Workspace, current is Parent + WorkspaceOverride.
         const currentAppearance = isMasterTarget
-          ? overrides[MASTER_APPEARANCE_ID] || baseAppearance
-          : useOverride
-            ? overrides[targetId] || baseAppearance
-            : baseAppearance;
+          ? (masterOverride || baseAppearance)
+          : (overrides[targetId] ? deepMergeAppearance(parentLayer, overrides[targetId]) : parentLayer);
+
         const nextAppearance = mutator(currentAppearance) || currentAppearance;
+
         // When editing master override, ensure we merge with base to preserve all properties
         const finalAppearance = isMasterTarget && nextAppearance !== currentAppearance
           ? { ...baseAppearance, ...nextAppearance }
           : nextAppearance;
+
         const nextState = {
           ...state,
           lastSelectedId: workspaceId || targetId,
         };
-        const applyEverywhere = isMasterTarget;
+
         if (
           finalAppearance === currentAppearance &&
-          !applyEverywhere &&
           nextState.lastSelectedId === state.lastSelectedId &&
-          nextState.enabled === state.enabled &&
-          nextState.overrides === state.overrides
+          nextState.enabled === state.enabled
         ) {
           return prev;
         }
-        if (applyEverywhere) {
+
+        if (isMasterTarget) {
           return {
             ...prev,
             appearanceWorkspaces: {
@@ -3177,15 +3337,19 @@ function App() {
             },
           };
         }
+
         if (useOverride) {
+          // Calculate Diff
+          const delta = getAppearanceDiff(parentLayer, nextAppearance);
           return {
             ...prev,
             appearanceWorkspaces: {
               ...nextState,
-              overrides: { ...overrides, [targetId]: finalAppearance },
+              overrides: { ...overrides, [targetId]: delta },
             },
           };
         }
+
         return {
           ...prev,
           appearance: finalAppearance,
@@ -3520,6 +3684,36 @@ function App() {
           general: { ...(prev.general || {}), autoUrlDoubleClick: !!val },
         }))
       }
+      onToggleScrollToChangeWorkspace={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspace: !!val },
+        }))
+      }
+      onToggleScrollToChangeWorkspaceIncludeSpeedDial={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspaceIncludeSpeedDial: !!val },
+        }))
+      }
+      onToggleScrollToChangeWorkspaceIncludeWholeColumn={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspaceIncludeWholeColumn: !!val },
+        }))
+      }
+      onToggleScrollToChangeWorkspaceResistance={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspaceResistance: !!val },
+        }))
+      }
+      onChangeScrollToChangeWorkspaceResistanceIntensity={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspaceResistanceIntensity: Number(val) },
+        }))
+      }
       onWorkspaceAdd={handleWorkspaceAdd}
       onWorkspaceRemove={handleWorkspaceRemove}
       onWorkspaceReorder={handleWorkspaceReorder}
@@ -3597,10 +3791,10 @@ function App() {
   const resolvedMusicStyleConfig = (() => {
     const base = musicMatchWorkspaceText
       ? {
-          ...musicAppearanceCfg,
-          resolvedTextColor: widgetThemeTokens.textColor,
-          resolvedAccentColor: widgetThemeTokens.accentColor,
-        }
+        ...musicAppearanceCfg,
+        resolvedTextColor: widgetThemeTokens.textColor,
+        resolvedAccentColor: widgetThemeTokens.accentColor,
+      }
       : musicAppearanceCfg;
     if (musicMatchSearchBarBlur && Number.isFinite(searchBarBlurPx)) {
       return { ...base, blurPx: searchBarBlurPx };
@@ -3652,7 +3846,7 @@ function App() {
           const nextLayout = mode === "classic" ? "classic" : "modern";
           try {
             localStorage.setItem("lastManualMasterLayout", nextLayout);
-          } catch {}
+          } catch { }
           return {
             ...(appearanceProfile || {}),
             masterLayout: nextLayout,
@@ -3896,6 +4090,24 @@ function App() {
           },
         }))
       }
+      onChangeSearchBarMaxGlow={(val) =>
+        applyAppearanceEdit((appearanceProfile) => ({
+          ...(appearanceProfile || {}),
+          searchBar: {
+            ...(appearanceProfile?.searchBar || {}),
+            maxGlow: Number(val),
+          },
+        }))
+      }
+      onToggleSearchBarMatchSpeedDialMaxGlow={(val) =>
+        applyAppearanceEdit((appearanceProfile) => ({
+          ...(appearanceProfile || {}),
+          searchBar: {
+            ...(appearanceProfile?.searchBar || {}),
+            matchSpeedDialMaxGlow: !!val,
+          },
+        }))
+      }
       onToggleSearchBarGlowByUrl={(val) =>
         applyAppearanceEdit((appearanceProfile) => ({
           ...(appearanceProfile || {}),
@@ -4110,12 +4322,12 @@ function App() {
             ...(prev.speedDial || {}),
             verticalOffset:
               (activeAppearance?.masterLayout || prev.appearance?.masterLayout) ===
-              "classic"
+                "classic"
                 ? (prev.speedDial?.verticalOffset ?? 0)
                 : Math.max(-240, Math.min(240, Number(val) || 0)),
             landscapeOffset:
               (activeAppearance?.masterLayout || prev.appearance?.masterLayout) ===
-              "classic"
+                "classic"
                 ? Math.max(-360, Math.min(360, Number(val) || 0))
                 : (prev.speedDial?.landscapeOffset ?? 0),
           },
@@ -4126,6 +4338,41 @@ function App() {
           ...prev,
           speedDial: { ...prev.speedDial, blurPx: v },
         }))
+      }
+      onChangeSpeedDialMaxGlow={(val) =>
+        setSettings((prev) => {
+          const state = normalizeAppearanceWorkspaceState(
+            prev.appearanceWorkspaces,
+          );
+          const anchorId = prev.speedDial?.anchoredWorkspaceId || null;
+          const targetId = resolveAppearanceWorkspaceTargetId(
+            state,
+            appearanceEditingTargetId,
+            anchorId,
+          );
+          const numVal = Number(val);
+          const next = {
+            ...prev,
+            speedDial: {
+              ...(prev.speedDial || {}),
+              maxGlowByWorkspace: {
+                ...(prev.speedDial?.maxGlowByWorkspace || {}),
+              },
+            },
+          };
+          if (
+            appearanceWorkspacesEnabled &&
+            targetId !== DEFAULT_APPEARANCE_WORKSPACE_ID
+          ) {
+            next.speedDial.maxGlowByWorkspace[targetId] = numVal;
+          } else {
+            next.speedDial.maxGlow = numVal;
+            if (next.speedDial.maxGlowByWorkspace) {
+              delete next.speedDial.maxGlowByWorkspace[targetId];
+            }
+          }
+          return next;
+        })
       }
       onToggleAutoUrlDoubleClick={(val) =>
         setSettings((prev) => {
@@ -4138,6 +4385,36 @@ function App() {
           }
           return next;
         })
+      }
+      onToggleScrollToChangeWorkspace={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspace: !!val },
+        }))
+      }
+      onToggleScrollToChangeWorkspaceIncludeSpeedDial={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspaceIncludeSpeedDial: !!val },
+        }))
+      }
+      onToggleScrollToChangeWorkspaceIncludeWholeColumn={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspaceIncludeWholeColumn: !!val },
+        }))
+      }
+      onToggleScrollToChangeWorkspaceResistance={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspaceResistance: !!val },
+        }))
+      }
+      onChangeScrollToChangeWorkspaceResistanceIntensity={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          general: { ...(prev.general || {}), scrollToChangeWorkspaceResistanceIntensity: Number(val) },
+        }))
       }
       onToggleSpeedDialTransparent={(val) =>
         setSettings((prev) => ({
@@ -4324,6 +4601,15 @@ function App() {
           music: {
             ...(appearanceProfile?.music || {}),
             matchSearchBarBlur: !!val,
+          },
+        }))
+      }
+      onToggleMusicDisableButtonBackgrounds={(val) =>
+        applyAppearanceEdit((appearanceProfile) => ({
+          ...(appearanceProfile || {}),
+          music: {
+            ...(appearanceProfile?.music || {}),
+            disableButtonBackgrounds: !!val,
           },
         }))
       }
@@ -4860,6 +5146,7 @@ function App() {
   return (
     <>
       {/* Wire SettingsButton events to settings updates */}
+      <IconThemeFilters settings={settings} />
       <script
         dangerouslySetInnerHTML={{
           __html: `
@@ -4900,6 +5187,7 @@ function App() {
             deferLoad={shouldDeferActiveBackground}
             mode={settings.background.mode || "cover"}
             zoom={settings.background.zoom || 1}
+            isVideo={activeBackgroundMeta?.mime?.startsWith('video/')}
           />
           {/* Optional animated overlay (scan lines). Other universal overlays removed for clarity */}
           {activeAppearance?.animatedOverlay && (
@@ -4949,16 +5237,16 @@ function App() {
               </div>
               {/* Music controller sits near the bottom, slightly raised */}
               {settings?.widgets?.enableMusicPlayer !== false && (
-                  <div className="mt-auto mb-12">
-                    <MusicController
-                      backendBase={
-                        settings?.general?.musicBackend || "/music/api/v1"
-                      }
-                      token={settings?.general?.musicToken || ""}
-                      styleConfig={resolvedMusicStyleConfig}
-                    />
-                  </div>
-                )}
+                <div className="mt-auto mb-12">
+                  <MusicController
+                    backendBase={
+                      settings?.general?.musicBackend || "/music/api/v1"
+                    }
+                    token={settings?.general?.musicToken || ""}
+                    styleConfig={resolvedMusicStyleConfig}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Center column - Main content area */}
@@ -5133,8 +5421,8 @@ function App() {
           --transparency-speed-dial: ${settings.speedDial.transparency};
           --glass-blur: ${settings.theme.glassEffect ? "16px" : "0px"};
           --glass-border: ${settings.theme.borders
-            ? "1px solid rgba(255, 255, 255, 0.2)"
-            : "none"};
+          ? "1px solid rgba(255, 255, 255, 0.2)"
+          : "none"};
         }
 
         .glass-morphism {

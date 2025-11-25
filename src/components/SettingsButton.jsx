@@ -4,6 +4,7 @@ import { Settings, X, Check } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs'
 import { FONT_PRESET_DEFINITIONS } from '../lib/theme-tokens'
 import BackgroundManager from './BackgroundManager'
+import ScrollToChangeWorkspaceSettings from './ScrollToChangeWorkspaceSettings'
 
 // Version from package.json - update this when releasing new versions
 const APP_VERSION = '2.1.0'
@@ -32,6 +33,11 @@ const SettingsButton = ({
   onSelectAppearanceWorkspace,
   onSettingsVisibilityChange,
   onToggleOpenInNewTab,
+  onToggleScrollToChangeWorkspace,
+  onToggleScrollToChangeWorkspaceIncludeSpeedDial,
+  onToggleScrollToChangeWorkspaceIncludeWholeColumn,
+  onToggleScrollToChangeWorkspaceResistance,
+  onChangeScrollToChangeWorkspaceResistanceIntensity,
   onToggleAnimatedOverlay,
   onSelectMasterLayout,
   onToggleMirrorLayout,
@@ -44,6 +50,8 @@ const SettingsButton = ({
   onSelectSearchBarPosition,
   onSelectSearchBarBlurPreset,
   onChangeSearchBarBlurPx,
+  onChangeSearchBarMaxGlow,
+  onToggleSearchBarMatchSpeedDialMaxGlow,
   onToggleSearchBarGlowByUrl,
   onToggleSearchBarGlowTransient,
   onToggleSearchBarInlineAiGlow,
@@ -83,6 +91,7 @@ const SettingsButton = ({
   onToggleSpeedDialShadow,
   onChangeSpeedDialVerticalOffset,
   onChangeSpeedDialBlur,
+  onChangeSpeedDialMaxGlow,
   onToggleSpeedDialGlow,
   onChangeSpeedDialGlowColor,
   // System-wide glow max
@@ -164,6 +173,7 @@ const SettingsButton = ({
   onToggleMusicUseShadows,
   onToggleMusicMatchTextColor,
   onToggleMusicMatchSearchBarBlur,
+  onToggleMusicDisableButtonBackgrounds,
   onChangeWidgetsVerticalOffset,
 }) => {
   const [showSettings, setShowSettings] = useState(false)
@@ -309,6 +319,18 @@ const SettingsButton = ({
   const searchBarTransientEnabled = !!(settings?.appearance?.searchBar?.glowTransient)
   const searchBarRefocusEnabled = !!(settings?.appearance?.searchBar?.refocusByUrl)
   const searchBarHoverGlow = !!(settings?.appearance?.searchBar?.hoverGlow)
+   const searchBarMatchSpeedDialMaxGlow = !!(settings?.appearance?.searchBar?.matchSpeedDialMaxGlow)
+  const searchBarMaxGlowDisplay = (() => {
+    const barMax = settings?.appearance?.searchBar?.maxGlow
+    const sdMax = settings?.speedDial?.maxGlow
+    if (searchBarMatchSpeedDialMaxGlow && typeof sdMax === 'number' && !Number.isNaN(sdMax)) {
+      return Number(sdMax)
+    }
+    if (typeof barMax === 'number' && !Number.isNaN(barMax)) {
+      return Number(barMax)
+    }
+    return 2.5
+  })()
   const allowedRefocusModes = ['letters', 'pulse', 'steady']
   const searchBarRefocusMode = (typeof settings?.appearance?.searchBar?.refocusMode === 'string' && allowedRefocusModes.includes(settings.appearance.searchBar.refocusMode))
     ? settings.appearance.searchBar.refocusMode
@@ -691,6 +713,14 @@ const SettingsButton = ({
                         </div>
                       </label>
                     </div>
+                    <ScrollToChangeWorkspaceSettings
+                      settings={settings}
+                      onToggleScrollToChangeWorkspace={onToggleScrollToChangeWorkspace}
+                      onToggleScrollToChangeWorkspaceIncludeSpeedDial={onToggleScrollToChangeWorkspaceIncludeSpeedDial}
+                      onToggleScrollToChangeWorkspaceIncludeWholeColumn={onToggleScrollToChangeWorkspaceIncludeWholeColumn}
+                      onToggleScrollToChangeWorkspaceResistance={onToggleScrollToChangeWorkspaceResistance}
+                      onChangeScrollToChangeWorkspaceResistanceIntensity={onChangeScrollToChangeWorkspaceResistanceIntensity}
+                    />
                     <div className="flex items-center justify-between p-3 bg-white/5 border border-white/15 rounded-lg">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
@@ -1747,6 +1777,24 @@ const SettingsButton = ({
                           title={speedDialPositionHint}
                         />
                       </div>
+                      <div className="mb-3 flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded gap-3">
+                        <span className="text-white/80 text-xs">Speed Dial max glow</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/50 text-[11px]">
+                            {Number(settings?.speedDial?.maxGlow ?? 2.5).toFixed(1)}
+                          </span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="5"
+                            step="0.1"
+                            value={Number(settings?.speedDial?.maxGlow ?? 2.5)}
+                            onChange={(e) => onChangeSpeedDialMaxGlow?.(Number(e.target.value))}
+                            className="w-24"
+                            title="Maximum glow intensity for Speed Dial effects"
+                          />
+                        </div>
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
                           <span className="text-white/80 text-xs">Transparent background</span>
@@ -2244,6 +2292,37 @@ const SettingsButton = ({
                                 className="w-24"
                                 title="Search bar blur (px)"
                               />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded gap-3">
+                            <span className="text-white/80 text-xs">Search bar max glow</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-white/50 text-[11px]">
+                                {Number(searchBarMaxGlowDisplay).toFixed(1)}
+                              </span>
+                              <input
+                                type="range"
+                                min="0"
+                                max="5"
+                                step="0.1"
+                                value={Number(searchBarMaxGlowDisplay)}
+                                onChange={(e) => {
+                                  if (onChangeSearchBarMaxGlow) {
+                                    onChangeSearchBarMaxGlow(Number(e.target.value))
+                                  }
+                                }}
+                                className="w-24"
+                                disabled={searchBarMatchSpeedDialMaxGlow}
+                                title="Search bar maximum glow intensity"
+                              />
+                              <label className="flex items-center gap-1 text-white/70 text-[11px]" title="Use Speed Dial max glow for the search bar">
+                                <input
+                                  type="checkbox"
+                                  checked={searchBarMatchSpeedDialMaxGlow}
+                                  onChange={(e) => onToggleSearchBarMatchSpeedDialMaxGlow?.(!!e.target.checked)}
+                                />
+                                <span>Match Speed Dial</span>
+                              </label>
                             </div>
                           </div>
 
@@ -3071,6 +3150,11 @@ const SettingsButton = ({
                         <span className="text-white/80 text-xs">Match text color to workspace coloring</span>
                         <input type="checkbox" checked={!!musicCfg.matchWorkspaceTextColor} onChange={(e) => onToggleMusicMatchTextColor?.(!!e.target.checked)} />
                       </label>
+                      <label className="mt-2 p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
+                        <span className="text-white/80 text-xs">Disable button backgrounds</span>
+                        <input type="checkbox" checked={!!musicCfg.disableButtonBackgrounds} onChange={(e) => onToggleMusicDisableButtonBackgrounds?.(!!e.target.checked)} />
+                      </label>
+                      <div className="text-white/50 text-[11px] mt-1">Buttons will be transparent but still react to hover on play, pause, etc.</div>
                     </div>
 
                     {/* Preset 2 Styling controls removed as requested */}

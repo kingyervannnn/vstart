@@ -7,7 +7,8 @@ const BackgroundRenderer = ({
   zoom = 1,
   alt = 'Background',
   deferLoad = false,
-  deferDelay = 300
+  deferDelay = 300,
+  isVideo = false
 }) => {
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -104,23 +105,45 @@ const BackgroundRenderer = ({
       )}
       {!placeholderSrc && !loaded && !failed && <div className="absolute inset-0 bg-black" />}
       {shouldRenderAsset && (
-        <img
-          src={src}
-          alt={alt}
-          decoding="async"
-          loading={deferLoad ? 'lazy' : 'eager'}
-          fetchpriority={deferLoad ? 'low' : 'high'}
-          onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
-          className={`w-full h-full transition-opacity duration-500 ${loaded && !failed ? 'opacity-100' : 'opacity-0'}`}
-          style={{ 
-            willChange: 'opacity, transform', 
-            objectFit,
-            transform: transformValue,
-            transformOrigin: 'center center',
-            imageRendering: 'auto'
-          }}
-        />
+        <>
+          {/* Check if src looks like a video */}
+          {(isVideo || src?.match(/\.(mp4|webm|mov)$/i) || src?.startsWith('data:video/')) ? (
+            <video
+              src={src}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className={`w-full h-full transition-opacity duration-500 ${loaded && !failed ? 'opacity-100' : 'opacity-0'}`}
+              onLoadedData={() => setLoaded(true)}
+              onError={() => setFailed(true)}
+              style={{
+                willChange: 'opacity, transform',
+                objectFit,
+                transform: transformValue,
+                transformOrigin: 'center center'
+              }}
+            />
+          ) : (
+            <img
+              src={src}
+              alt={alt}
+              decoding="async"
+              loading={deferLoad ? 'lazy' : 'eager'}
+              fetchpriority={deferLoad ? 'low' : 'high'}
+              onLoad={() => setLoaded(true)}
+              onError={() => setFailed(true)}
+              className={`w-full h-full transition-opacity duration-500 ${loaded && !failed ? 'opacity-100' : 'opacity-0'}`}
+              style={{
+                willChange: 'opacity, transform',
+                objectFit,
+                transform: transformValue,
+                transformOrigin: 'center center',
+                imageRendering: 'auto'
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   )

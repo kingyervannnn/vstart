@@ -144,10 +144,12 @@ export function applySoftSwitchGlow(
   const workspaceGlowColors = settings?.speedDial?.workspaceGlowColors || {}
   const fallbackColor = settings?.speedDial?.glowColor || '#00ffff66'
   const per = Number(settings?.speedDial?.glowIntensity ?? 1.0)
-  const cap = Number(settings?.appearance?.glowMaxIntensity ?? 1.0)
-  const normPer = Math.max(0.1, Math.min(2.5, per))
-  const normCap = Math.max(0.1, Math.min(2.5, cap))
-  const intensity = Math.min(normPer, normCap)
+  const cap = Number(settings?.appearance?.glowMaxIntensity ?? 2.5)
+  const dialCap = Number(settings?.speedDial?.maxGlow ?? 2.5)
+  const normPer = Math.max(0.1, Math.min(5, per))
+  const normCap = Math.max(0.1, Math.min(5, cap))
+  const normDialCap = Math.max(0.1, Math.min(5, dialCap))
+  const intensity = Math.min(normPer, normCap, normDialCap)
   const anchoredWorkspaceId = settings?.speedDial?.anchoredWorkspaceId || null
 
   const lastInConfig = settings?.theme?.lastIn || {}

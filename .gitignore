@@ -64,4 +64,5 @@ yarn.lock
 *.tmp
 *.temp
 .cache/
+tmp/
 

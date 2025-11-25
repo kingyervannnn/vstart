@@ -1309,8 +1309,29 @@ const SearchBox = forwardRef(({
   const glowTargetRef = useRef(0)
   const glowAnimationFrameRef = useRef(null)
   const perIntensity = Number(settings?.speedDial?.glowIntensity ?? 1)
+  const searchBarAppearance = settings?.appearance?.searchBar
+  const searchBarMaxGlow = searchBarAppearance?.maxGlow
+  const matchSpeedDialMaxGlow = !!searchBarAppearance?.matchSpeedDialMaxGlow
+  const speedDialMaxGlow = settings?.speedDial?.maxGlow
   const sysCap = Number(settings?.appearance?.glowMaxIntensity ?? 1)
-  const glowIntensitySetting = Math.max(0, Math.min(2.5, Math.min(perIntensity, sysCap)))
+  // Use search bar specific maxGlow if defined, otherwise fall back to global glowMaxIntensity
+  // Default to 2.5 if neither is set
+  let effectiveMaxGlow = 2.5
+  if (
+    matchSpeedDialMaxGlow &&
+    typeof speedDialMaxGlow === 'number' &&
+    !Number.isNaN(speedDialMaxGlow)
+  ) {
+    effectiveMaxGlow = speedDialMaxGlow
+  } else if (
+    typeof searchBarMaxGlow === 'number' &&
+    !Number.isNaN(searchBarMaxGlow)
+  ) {
+    effectiveMaxGlow = searchBarMaxGlow
+  } else if (sysCap > 0) {
+    effectiveMaxGlow = sysCap
+  }
+  const glowIntensitySetting = Math.max(0, Math.min(5, Math.min(perIntensity, effectiveMaxGlow)))
   const activeGlowKey = activeGlow ? `${activeGlow.type}:${activeGlow.color}` : 'none'
   const targetStrength = activeGlow ? ((activeGlow.type === 'refocus' || activeGlow.type === 'transient') ? glowIntensitySetting : 1) : 0
 

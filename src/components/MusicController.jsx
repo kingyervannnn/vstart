@@ -1,6 +1,19 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Play, Pause, SkipForward, Music2 } from 'lucide-react'
 
+// CSS for button hover effects
+const buttonHoverStyles = `
+  .music-button {
+    transition: all 0.2s ease-in-out;
+  }
+  .music-button:not(:disabled):hover {
+    transform: scale(1.05);
+  }
+  .music-button:not(:disabled):active {
+    transform: scale(0.95);
+  }
+`
+
 const toRgba = (hex, alpha = 1) => {
   try {
     if (!hex) return `rgba(255,255,255,${alpha})`
@@ -358,23 +371,37 @@ const MusicController = ({ backendBase = '/music/api/v1', token = '', primaryCol
   const accentSoft = toRgba(accent, 0.18)
   const accentGlow = toRgba(accent, 0.35)
 
+  const musicBlurPx = Number.isFinite(Number(musicCfg.blurPx)) ? Number(musicCfg.blurPx) : 12
+  const removeBg = !!musicCfg.removeBackground
+  const removeOutline = !!musicCfg.removeOutline
+  const useShadows = musicCfg.useShadows !== false
+  const disableButtonBackgrounds = !!musicCfg.disableButtonBackgrounds
+
   const buttonBaseStyle = {
     borderColor: toRgba(baseColor, 0.35),
     color: toRgba(baseColor, 0.75),
-    backgroundColor: toRgba(baseColor, 0.08)
+    backgroundColor: disableButtonBackgrounds ? 'transparent' : toRgba(baseColor, 0.08),
+    transition: 'all 0.2s ease-in-out',
+    cursor: 'pointer'
   }
 
   const activeButtonExtra = {
     borderColor: accent,
     color: accent,
-    backgroundColor: accentSoft,
-    boxShadow: `0 0 12px ${accentGlow}`
+    backgroundColor: disableButtonBackgrounds ? 'transparent' : accentSoft,
+    boxShadow: disableButtonBackgrounds ? `0 0 8px ${accentGlow}` : `0 0 12px ${accentGlow}`
   }
 
-  const musicBlurPx = Number.isFinite(Number(musicCfg.blurPx)) ? Number(musicCfg.blurPx) : 12
-  const removeBg = !!musicCfg.removeBackground
-  const removeOutline = !!musicCfg.removeOutline
-  const useShadows = musicCfg.useShadows !== false
+  // Inject hover styles
+  useEffect(() => {
+    const styleId = 'music-button-hover-styles'
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style')
+      style.id = styleId
+      style.textContent = buttonHoverStyles
+      document.head.appendChild(style)
+    }
+  }, [])
 
   return (
     <div
@@ -467,16 +494,41 @@ const MusicController = ({ backendBase = '/music/api/v1', token = '', primaryCol
           ) }
         ].map(btn => {
           const isActive = (btn.k === 'toggle-play' && nowPlaying.isPlaying) || (btn.k === 'shuffle' && shuffleOn)
+          const hoverBgColor = disableButtonBackgrounds 
+            ? (isActive ? toRgba(accent, 0.15) : toRgba(baseColor, 0.12))
+            : (isActive ? toRgba(accent, 0.25) : toRgba(baseColor, 0.15))
+          const hoverBorderColor = isActive ? accent : toRgba(baseColor, 0.5)
+          const hoverColor = isActive ? accent : toRgba(baseColor, 0.9)
+          const hoverShadow = isActive ? `0 0 16px ${accentGlow}` : 'none'
+          
           return (
           <button
             key={btn.k}
             onClick={() => action(btn.k)}
             disabled={isLoading}
-            className={`h-8 w-8 flex items-center justify-center rounded-md ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`music-button h-8 w-8 flex items-center justify-center rounded-md ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
             style={{
               ...buttonBaseStyle,
               ...(isActive ? activeButtonExtra : {}),
-              ...(isLoading ? { boxShadow: 'none' } : {})
+              ...(isLoading ? { boxShadow: 'none', cursor: 'not-allowed' } : {}),
+            }}
+            onMouseEnter={(e) => {
+              if (!isLoading) {
+                e.currentTarget.style.backgroundColor = hoverBgColor
+                e.currentTarget.style.borderColor = hoverBorderColor
+                e.currentTarget.style.color = hoverColor
+                if (hoverShadow !== 'none') {
+                  e.currentTarget.style.boxShadow = hoverShadow
+                }
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isLoading) {
+                e.currentTarget.style.backgroundColor = buttonBaseStyle.backgroundColor
+                e.currentTarget.style.borderColor = isActive ? activeButtonExtra.borderColor : buttonBaseStyle.borderColor
+                e.currentTarget.style.color = isActive ? activeButtonExtra.color : buttonBaseStyle.color
+                e.currentTarget.style.boxShadow = isActive ? activeButtonExtra.boxShadow : 'none'
+              }
             }}
             title={btn.title}
           >

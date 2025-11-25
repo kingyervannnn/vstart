@@ -100,10 +100,10 @@ export async function listBackgrounds() {
   }
 }
 
-export async function getBackgroundURLById(id) {
+export async function getBackgroundRecordById(id) {
   if (useMemory) {
     const r = memoryStore.get(id)
-    return r ? URL.createObjectURL(r.blob) : null
+    return r ? { ...r } : null
   }
   try {
     const db = await openDB()
@@ -114,12 +114,18 @@ export async function getBackgroundURLById(id) {
       req.onerror = () => reject(req.error)
     })
     if (!record) return null
-    return URL.createObjectURL(record.blob)
+    return { ...record }
   } catch (e) {
     useMemory = true
     const r = memoryStore.get(id)
-    return r ? URL.createObjectURL(r.blob) : null
+    return r ? { ...r } : null
   }
+}
+
+export async function getBackgroundURLById(id) {
+  const record = await getBackgroundRecordById(id)
+  if (!record) return null
+  return URL.createObjectURL(record.blob)
 }
 
 export async function deleteBackground(id) {

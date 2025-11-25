@@ -135,10 +135,12 @@ export class GlowManager {
    */
   getGlowIntensity() {
     const per = Number(this.settings?.speedDial?.glowIntensity ?? 1.0)
-    const cap = Number(this.settings?.appearance?.glowMaxIntensity ?? 1.0)
-    const normPer = Math.max(0.1, Math.min(2.5, per))
-    const normCap = Math.max(0.1, Math.min(2.5, cap))
-    return Math.min(normPer, normCap)
+    const globalCap = Number(this.settings?.appearance?.glowMaxIntensity ?? 2.5)
+    const dialCap = Number(this.settings?.speedDial?.maxGlow ?? 2.5)
+    const normPer = Math.max(0.1, Math.min(5, per))
+    const normGlobalCap = Math.max(0.1, Math.min(5, globalCap))
+    const normDialCap = Math.max(0.1, Math.min(5, dialCap))
+    return Math.min(normPer, normGlobalCap, normDialCap)
   }
 
   /**
@@ -196,9 +198,11 @@ export class GlowManager {
 
     const color = this.getGlowColor(workspaceId)
     const baseIntensity = this.getGlowIntensity()
-    const globalCapRaw = Number(this.settings?.appearance?.glowMaxIntensity ?? 1)
-    const globalCap = Math.max(0.1, Math.min(2.5, globalCapRaw))
-    const intensity = Math.min(baseIntensity * 1.6, globalCap)
+    const globalCapRaw = Number(this.settings?.appearance?.glowMaxIntensity ?? 2.5)
+    const dialCapRaw = Number(this.settings?.speedDial?.maxGlow ?? 2.5)
+    const globalCap = Math.max(0.1, Math.min(5, globalCapRaw))
+    const dialCap = Math.max(0.1, Math.min(5, dialCapRaw))
+    const intensity = Math.min(baseIntensity * 1.6, globalCap, dialCap)
     const sectors = this.getGlowSectors()
 
     // Clear any existing transient glow for this workspace

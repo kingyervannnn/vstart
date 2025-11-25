@@ -95,6 +95,104 @@ const WorkspaceStrip = ({ items, activeId, onSelect, onDoubleSelect, onAdd, onRe
   const addWorkspace = () => onAdd?.()
   const removeWorkspace = (id) => onRemove?.(id)
 
+  // Scroll to change workspace functionality
+  const scrollToChangeWorkspace = !!(settings?.general?.scrollToChangeWorkspace)
+  const scrollToChangeWorkspaceIncludeSpeedDial = !!(settings?.general?.scrollToChangeWorkspaceIncludeSpeedDial)
+  const scrollToChangeWorkspaceIncludeWholeColumn = !!(settings?.general?.scrollToChangeWorkspaceIncludeWholeColumn)
+  const scrollToChangeWorkspaceResistance = !!(settings?.general?.scrollToChangeWorkspaceResistance)
+  const scrollToChangeWorkspaceResistanceIntensity = Number(settings?.general?.scrollToChangeWorkspaceResistanceIntensity ?? 100)
+  const scrollTimeoutRef = useRef(null)
+  const lastScrollTimeRef = useRef(0)
+  const isMouseOverRef = useRef(false)
+  const scrollAccumulatorRef = useRef(0) // For resistance scrolling
+
+  const handleWheel = useCallback((e) => {
+    // If includeWholeColumn is enabled (and speed dial is included), allow scrolling even when not directly over buttons
+    const shouldAllowScroll = scrollToChangeWorkspaceIncludeSpeedDial && scrollToChangeWorkspaceIncludeWholeColumn
+    if (!scrollToChangeWorkspace || !containerRef.current || items.length === 0 || (!shouldAllowScroll && !isMouseOverRef.current)) return
+
+    // Throttle scroll events (max once per 150ms)
+    const now = Date.now()
+    if (now - lastScrollTimeRef.current < 150) {
+      e.preventDefault()
+      return
+    }
+    lastScrollTimeRef.current = now
+
+    // Determine scroll direction and delta
+    const deltaY = e.deltaY
+
+    // Resistance scrolling: accumulate scroll delta before changing workspace
+    if (scrollToChangeWorkspaceResistance) {
+      scrollAccumulatorRef.current += Math.abs(deltaY)
+      const RESISTANCE_THRESHOLD = Math.max(50, Math.min(500, scrollToChangeWorkspaceResistanceIntensity))
+      if (scrollAccumulatorRef.current < RESISTANCE_THRESHOLD) {
+        e.preventDefault()
+        return
+      }
+      scrollAccumulatorRef.current = 0 // Reset accumulator
+    }
+
+    // Prevent default scroll behavior
+    e.preventDefault()
+    e.stopPropagation()
+
+    // Clear any pending timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current)
+    }
+
+    // Determine scroll direction
+    const scrollDown = deltaY > 0
+
+    // Find current workspace index
+    const currentIndex = items.findIndex(ws => ws.id === activeId)
+    if (currentIndex === -1) return
+
+    // Calculate next workspace index
+    let nextIndex
+    if (scrollDown) {
+      nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0
+    } else {
+      nextIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1
+    }
+
+    // Change workspace immediately (no delay needed since we're throttling)
+    const nextWorkspace = items[nextIndex]
+    if (nextWorkspace && nextWorkspace.id !== activeId) {
+      onSelect?.(nextWorkspace.id)
+    }
+  }, [scrollToChangeWorkspace, scrollToChangeWorkspaceIncludeSpeedDial, scrollToChangeWorkspaceIncludeWholeColumn, scrollToChangeWorkspaceResistance, scrollToChangeWorkspaceResistanceIntensity, items, activeId, onSelect])
+
+  useEffect(() => {
+    if (!scrollToChangeWorkspace || !containerRef.current) return
+
+    const container = containerRef.current
+    
+    const handleMouseEnter = () => {
+      isMouseOverRef.current = true
+      scrollAccumulatorRef.current = 0 // Reset on mouse enter
+    }
+    
+    const handleMouseLeave = () => {
+      isMouseOverRef.current = false
+      scrollAccumulatorRef.current = 0 // Reset on mouse leave
+    }
+    
+    container.addEventListener('mouseenter', handleMouseEnter)
+    container.addEventListener('mouseleave', handleMouseLeave)
+    container.addEventListener('wheel', handleWheel, { passive: false })
+
+    return () => {
+      container.removeEventListener('mouseenter', handleMouseEnter)
+      container.removeEventListener('mouseleave', handleMouseLeave)
+      container.removeEventListener('wheel', handleWheel)
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
+  }, [scrollToChangeWorkspace, handleWheel])
+
   // Resolve a single header color consistent with Speed Dial logic
   const currentPath = useMemo(() => {
     try { return (window.location.pathname || '').replace(/\/+$/, '') || '/' } catch { return '/' }

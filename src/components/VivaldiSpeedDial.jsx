@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } fr
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Folder, FolderPlus, Upload, Image, Trash2, ExternalLink as LinkIcon, ChevronLeft, Layers, Home, Grid2X2, AppWindow, LayoutList, Plus, Edit3, Copy } from 'lucide-react'
-import { 
+import {
   ContextMenu,
   ContextMenuTrigger,
   ContextMenuContent,
@@ -25,8 +25,8 @@ const DEFAULT_GLOW_KEY = '__default__'
 // URL helpers
 function normalizeUrl(input) {
   if (!input) return null
-  try { return new URL(input) } catch {}
-  try { return new URL(`https://${input}`) } catch {}
+  try { return new URL(input) } catch { }
+  try { return new URL(`https://${input}`) } catch { }
   return null
 }
 function getFaviconKey(input) {
@@ -156,7 +156,7 @@ const VivaldiSpeedDial = ({
   }
   const effectiveHardWorkspaceId = hardWorkspaceId || lastInFallbackWorkspaceId || null
   const isLastInFallbackActive = !hardWorkspaceId && !!lastInFallbackWorkspaceId
-  
+
   const [dragState, setDragState] = useState({
     isDragging: false,
     draggedTile: null,
@@ -165,7 +165,7 @@ const VivaldiSpeedDial = ({
     source: 'root', // 'root' | 'folder'
     dropOutside: false
   })
-  
+
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [newTileData, setNewTileData] = useState({ url: '', title: '', customIcon: null })
   const [faviconCache, setFaviconCache] = useState({})
@@ -185,10 +185,10 @@ const VivaldiSpeedDial = ({
     const maxPageIndex = Math.max(0, Math.ceil(totalChildren / Math.max(1, FOLDER_PAGE_CAPACITY)) - 1)
     setFolderPage(prev => Math.min(prev, maxPageIndex))
   }, [FOLDER_PAGE_CAPACITY])
-  
+
   const containerRef = useRef(null)
   const fileInputRef = useRef(null)
-  
+
   // Grid layout: adaptive columns and fixed tile size
   const DEFAULT_COLS = 5
   const TILE_SIZE = 56
@@ -218,7 +218,7 @@ const VivaldiSpeedDial = ({
     if (presetFontMap[key]) return presetFontMap[key]
     return sel
   }
-  
+
   // Vivaldi-style favicon fetching with multiple fallbacks
   const fetchFavicon = useCallback(async (url) => {
     const key = getFaviconKey(url)
@@ -249,7 +249,7 @@ const VivaldiSpeedDial = ({
             setFaviconCache(prev => ({ ...prev, [key]: okSrc }))
             return okSrc
           }
-        } catch {}
+        } catch { }
       }
       const fb = generateFallbackIcon(url)
       setFaviconCache(prev => ({ ...prev, [key]: fb }))
@@ -260,14 +260,14 @@ const VivaldiSpeedDial = ({
       return fb
     }
   }, [faviconCache])
-  
+
   // Generate fallback icon similar to Vivaldi's approach
   const generateFallbackIcon = (url) => {
     try {
       const domain = getFaviconKey(url) || 'site'
       const letter = domain.charAt(0).toUpperCase()
       const hue = domain.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360
-      
+
       return `data:image/svg+xml;base64,${btoa(`
         <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -289,7 +289,7 @@ const VivaldiSpeedDial = ({
       `)}`
     }
   }
-  
+
   // Load favicons for all tiles
   useEffect(() => {
     tiles.forEach(tile => {
@@ -302,13 +302,13 @@ const VivaldiSpeedDial = ({
       }
     })
   }, [tiles, fetchFavicon, faviconCache])
-  
+
   // Vivaldi-style drag and drop implementation
   const handleTileMouseDown = (e, tile) => {
     if (tile?.back) return // don't drag the back tile
     e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
-    
+
     setDragState({
       isDragging: true,
       draggedTile: tile,
@@ -321,10 +321,10 @@ const VivaldiSpeedDial = ({
       dropOutside: false
     })
   }
-  
+
   const handleMouseMove = useCallback((e) => {
     if (!dragState.isDragging || !containerRef.current) return
-    
+
     const containerRect = containerRef.current.getBoundingClientRect()
     const x = e.clientX - containerRect.left
     const y = e.clientY - containerRect.top
@@ -335,19 +335,19 @@ const VivaldiSpeedDial = ({
       const r = backButtonRef.current.getBoundingClientRect()
       overBack = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
     }
-    
+
     // Calculate grid position (left-aligned grid)
     const col = Math.floor(x / (TILE_SIZE + TILE_GAP))
     const row = Math.floor(y / (TILE_SIZE + TILE_GAP))
     const position = row * cols + col
-    
+
     setDragState(prev => ({
       ...prev,
       dropPosition: (inside && col >= 0 && col < cols && position >= 0) ? position : null,
       dropOutside: prev.source === 'folder' ? (!inside || overBack) : false
     }))
   }, [dragState.isDragging, cols, openFolder])
-  
+
   const handleMouseUp = useCallback(() => {
     if (dragState.isDragging && dragState.draggedTile) {
       const draggedTile = dragState.draggedTile
@@ -387,7 +387,7 @@ const VivaldiSpeedDial = ({
         const arr = [...tiles]
         const draggedIndex = arr.findIndex(t => t.id === draggedTile.id)
         const targetIndex = dragState.dropPosition
-        const byPosition = (list) => list.slice().sort((a,b) => (a.position ?? 0) - (b.position ?? 0))
+        const byPosition = (list) => list.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
         const arrPos = byPosition(arr)
         const targetTile = arrPos.find(t => (t.position ?? 0) === targetIndex)
         if (draggedIndex !== -1 && targetTile && targetTile.id !== draggedTile.id) {
@@ -430,7 +430,7 @@ const VivaldiSpeedDial = ({
         }
       }
     }
-    
+
     setDragState({
       isDragging: false,
       draggedTile: null,
@@ -440,13 +440,13 @@ const VivaldiSpeedDial = ({
       dropOutside: false
     })
   }, [dragState, tiles, openFolder])
-  
+
   // Global mouse events for drag and drop
   useEffect(() => {
     if (dragState.isDragging) {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
-      
+
       return () => {
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
@@ -479,7 +479,7 @@ const VivaldiSpeedDial = ({
       else window.removeEventListener('resize', compute)
     }
   }, [])
-  
+
   // Add new tile
   const handleAddTile = () => {
     if (!newTileData.url || !newTileData.title) return
@@ -495,12 +495,12 @@ const VivaldiSpeedDial = ({
     setNewTileData({ url: '', title: '', customIcon: null })
     setShowAddDialog(false)
   }
-  
+
   // Remove tile
   const handleRemoveTile = (tileId) => {
     commitActiveTiles(tiles.filter(t => t.id !== tileId).map((t, idx) => ({ ...t, position: idx })))
   }
-  
+
   // Handle custom icon upload (normalize + save to project storage if available)
   const handleIconUpload = async (e) => {
     const file = e.target.files?.[0]
@@ -516,7 +516,7 @@ const VivaldiSpeedDial = ({
       reader.readAsDataURL(file)
     }
   }
-  
+
   // Rename a single non-folder tile
   const renameTile = (tileId) => {
     const t = tiles.find(x => x.id === tileId)
@@ -550,7 +550,7 @@ const VivaldiSpeedDial = ({
       reader.readAsDataURL(file)
     }
   }
-  
+
   // Fixed sizing (no responsive resize to prevent layout jitter)
 
   const renameFolder = (tileId) => {
@@ -566,117 +566,120 @@ const VivaldiSpeedDial = ({
   const renderTile = (tile, index) => {
     const isDragged = dragState.draggedTile?.id === tile.id
     const isDropTarget = dragState.dropPosition === index && dragState.isDragging
-    
+
     return (
       <ContextMenu>
-      <ContextMenuTrigger asChild>
-      <motion.div
-        data-role="tile"
-        key={tile.id}
-        className={`
+        <ContextMenuTrigger asChild>
+          <motion.div
+            data-role="tile"
+            key={tile.id}
+            className={`
           relative cursor-pointer group
           ${isDragged ? 'opacity-50 z-50' : ''}
           ${isDropTarget ? 'scale-110' : ''}
         `}
-        style={{
-          width: TILE_SIZE,
-          height: TILE_SIZE,
-        }}
-        title={tile.title || (Array.isArray(tile.children) ? 'Folder' : '')}
-        whileHover={{ scale: isDragged ? 1 : 1.05 }}
-        whileTap={{ scale: isDragged ? 1 : 0.95 }}
-        onMouseDown={(e) => handleTileMouseDown(e, tile)}
-        onClick={() => {
-          if (dragState.isDragging) return
-          if (Array.isArray(tile.children) && tile.children.length > 0) {
-            setOpenFolder(tile)
-            setFolderBlur(true)
-            setTimeout(() => setFolderBlur(false), 250)
-          } else if (tile.url) {
-            const nu = normalizeUrl(tile.url)
-            const href = nu ? nu.href : tile.url
-            if (settings?.general?.openInNewTab) {
-              window.open(href, '_blank', 'noopener,noreferrer')
-            } else {
-              window.location.href = href
-            }
-          }
-        }}
-      >
-        <div className="w-full h-full rounded-lg overflow-hidden">
-          {Array.isArray(tile.children) && tile.children.length > 0 ? (
-            <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-0.5 p-0.5 bg-white/5 rounded">
-              {tile.children.slice(0,4).map((child, i) => (
-                <img key={i} src={child.favicon || faviconCache[getFaviconKey(child.url)] || generateFallbackIcon(child.url)} alt={child.title}
-                  className="w-full h-full object-cover rounded" />
-              ))}
-            </div>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center p-1.5">
-              {tile.favicon || faviconCache[getFaviconKey(tile.url)] ? (
-                <img
-                  src={tile.favicon || faviconCache[getFaviconKey(tile.url)]}
-                  alt={tile.title}
-                  className="w-full h-full object-contain"
-                  onError={(e) => { e.target.src = generateFallbackIcon(tile.url) }}
-                />
+            style={{
+              width: TILE_SIZE,
+              height: TILE_SIZE,
+            }}
+            title={tile.title || (Array.isArray(tile.children) ? 'Folder' : '')}
+            whileHover={{ scale: isDragged ? 1 : 1.05 }}
+            whileTap={{ scale: isDragged ? 1 : 0.95 }}
+            onMouseDown={(e) => handleTileMouseDown(e, tile)}
+            onClick={() => {
+              if (dragState.isDragging) return
+              if (Array.isArray(tile.children) && tile.children.length > 0) {
+                setOpenFolder(tile)
+                setFolderBlur(true)
+                setTimeout(() => setFolderBlur(false), 250)
+              } else if (tile.url) {
+                const nu = normalizeUrl(tile.url)
+                const href = nu ? nu.href : tile.url
+                if (settings?.general?.openInNewTab) {
+                  window.open(href, '_blank', 'noopener,noreferrer')
+                } else {
+                  window.location.href = href
+                }
+              }
+            }}
+          >
+            <div className="w-full h-full rounded-lg overflow-hidden">
+              {Array.isArray(tile.children) && tile.children.length > 0 ? (
+                <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-0.5 p-0.5 bg-white/5 rounded">
+                  {tile.children.slice(0, 4).map((child, i) => (
+                    <img key={i} src={child.favicon || faviconCache[getFaviconKey(child.url)] || generateFallbackIcon(child.url)} alt={child.title}
+                      className="w-full h-full object-cover rounded"
+                      style={{ filter: settings?.iconTheming?.enabled ? 'url(#icon-theme-filter)' : 'none' }}
+                    />
+                  ))}
+                </div>
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-xs">
-                    {tile.title.charAt(0).toUpperCase()}
-                  </span>
+                <div className="w-full h-full flex items-center justify-center p-1.5">
+                  {tile.favicon || faviconCache[getFaviconKey(tile.url)] ? (
+                    <img
+                      src={tile.favicon || faviconCache[getFaviconKey(tile.url)]}
+                      alt={tile.title}
+                      className="w-full h-full object-contain"
+                      onError={(e) => { e.target.src = generateFallbackIcon(tile.url) }}
+                      style={{ filter: settings?.iconTheming?.enabled ? 'url(#icon-theme-filter)' : 'none' }}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-xs">
+                        {tile.title.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
-        
-        {/* Hover label (name): bold, no background, only on hover */}
-        <div className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] text-white/90 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
-          {Array.isArray(tile.children) && tile.children.length > 0 ? (tile.title || 'Folder') : (tile.title || '')}
-        </div>
 
-        {/* Drop indicator */}
-        {isDropTarget && (
-          <div className="absolute inset-0 border-2 border-dashed border-cyan-400 rounded-xl bg-cyan-400/20" />
-        )}
-      </motion.div>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onClick={() => {
-          const targetUrl = Array.isArray(tile.children) && tile.children.length > 0 ? tile.children[0].url : tile.url
-          const nu = normalizeUrl(targetUrl)
-          const href = nu ? nu.href : targetUrl
-          const target = settings?.general?.openInNewTab ? '_blank' : '_self'
-          window.open(href, target)
-        }}>
-          <LinkIcon className="w-4 h-4" /> Open
-        </ContextMenuItem>
-        {!Array.isArray(tile.children) && (
-          <ContextMenuItem onClick={() => renameTile(tile.id)}>
-            <Edit3 className="w-4 h-4" /> Rename
+            {/* Hover label (name): bold, no background, only on hover */}
+            <div className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] text-white/90 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+              {Array.isArray(tile.children) && tile.children.length > 0 ? (tile.title || 'Folder') : (tile.title || '')}
+            </div>
+
+            {/* Drop indicator */}
+            {isDropTarget && (
+              <div className="absolute inset-0 border-2 border-dashed border-cyan-400 rounded-xl bg-cyan-400/20" />
+            )}
+          </motion.div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onClick={() => {
+            const targetUrl = Array.isArray(tile.children) && tile.children.length > 0 ? tile.children[0].url : tile.url
+            const nu = normalizeUrl(targetUrl)
+            const href = nu ? nu.href : targetUrl
+            const target = settings?.general?.openInNewTab ? '_blank' : '_self'
+            window.open(href, target)
+          }}>
+            <LinkIcon className="w-4 h-4" /> Open
           </ContextMenuItem>
-        )}
-        {Array.isArray(tile.children) && tile.children.length > 0 && (
-          <ContextMenuItem onClick={() => renameFolder(tile.id)}>
-            Rename Folder
+          {!Array.isArray(tile.children) && (
+            <ContextMenuItem onClick={() => renameTile(tile.id)}>
+              <Edit3 className="w-4 h-4" /> Rename
+            </ContextMenuItem>
+          )}
+          {Array.isArray(tile.children) && tile.children.length > 0 && (
+            <ContextMenuItem onClick={() => renameFolder(tile.id)}>
+              Rename Folder
+            </ContextMenuItem>
+          )}
+          {!Array.isArray(tile.children) && (
+            <>
+              <ContextMenuItem onClick={() => { setIconEditTarget(tile.id); editIconInputRef.current?.click() }}>
+                <Upload className="w-4 h-4" /> Change Icon
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => commitActiveTiles(tiles.map(t => t.id === tile.id ? { ...t, favicon: null } : t))}>
+                <Image className="w-4 h-4" /> Reset Icon
+              </ContextMenuItem>
+            </>
+          )}
+          <ContextMenuSeparator />
+          <ContextMenuItem variant="destructive" onClick={() => handleRemoveTile(tile.id)}>
+            <Trash2 className="w-4 h-4" /> Delete Shortcut
           </ContextMenuItem>
-        )}
-        {!Array.isArray(tile.children) && (
-          <>
-            <ContextMenuItem onClick={() => { setIconEditTarget(tile.id); editIconInputRef.current?.click() }}>
-              <Upload className="w-4 h-4" /> Change Icon
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => commitActiveTiles(tiles.map(t => t.id === tile.id ? { ...t, favicon: null } : t))}>
-              <Image className="w-4 h-4" /> Reset Icon
-            </ContextMenuItem>
-          </>
-        )}
-        <ContextMenuSeparator />
-        <ContextMenuItem variant="destructive" onClick={() => handleRemoveTile(tile.id)}>
-          <Trash2 className="w-4 h-4" /> Delete Shortcut
-        </ContextMenuItem>
-      </ContextMenuContent>
+        </ContextMenuContent>
       </ContextMenu>
     )
   }
@@ -701,7 +704,7 @@ const VivaldiSpeedDial = ({
       </motion.div>
     )
   }
-  
+
   const [editingTitle, setEditingTitle] = useState(false)
   const [tempTitle, setTempTitle] = useState(title)
   useEffect(() => setTempTitle(title), [title])
@@ -709,7 +712,7 @@ const VivaldiSpeedDial = ({
   // Build slot map for experimental mode (7 rows of predefined spaces)
   const gridRows = isExperimental ? 7 : Math.ceil((tiles?.length || 1) / Math.max(cols, 1)) || 1
   const gridCount = Math.max(1, gridRows * Math.max(cols, 1))
-  const positioned = Array.isArray(tiles) ? tiles.slice().sort((a,b) => (a.position ?? 0) - (b.position ?? 0)) : []
+  const positioned = Array.isArray(tiles) ? tiles.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)) : []
   const slots = new Array(gridCount).fill(null)
   positioned.forEach((t) => {
     const p = Math.max(0, Math.min(gridCount - 1, t.position ?? 0))
@@ -738,121 +741,121 @@ const VivaldiSpeedDial = ({
         }}
         className={isExperimental ? 'bg-white/10' : ''}
       >
-      {/* Title row inside the layer */}
-      <div className="flex items-center justify-between px-3 pt-3 pb-2">
-        {openFolder ? (
-          <h2 className="text-base font-semibold text-white/90">
-            {(title || 'Home')} — {(openFolder.title || 'Folder')}
-          </h2>
-        ) : (
-          !editingTitle ? (
-            <h2 className="text-base font-semibold text-white/90 cursor-text" onClick={() => setEditingTitle(true)}>
-              {title}
+        {/* Title row inside the layer */}
+        <div className="flex items-center justify-between px-3 pt-3 pb-2">
+          {openFolder ? (
+            <h2 className="text-base font-semibold text-white/90">
+              {(title || 'Home')} — {(openFolder.title || 'Folder')}
             </h2>
           ) : (
-            <input
-              autoFocus
-              value={tempTitle}
-              onChange={(e) => setTempTitle(e.target.value)}
-              onBlur={() => { setEditingTitle(false); onTitleChange?.(tempTitle || 'Speed Dial') }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } }}
-              className="bg-white/10 border border-white/20 rounded px-2 py-1 text-sm text-white outline-none"
-            />
-          )
-        )}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (openFolder?.id) {
-                startAddTile({
-                  wsId: activeWorkspaceId,
-                  folderId: openFolder.id,
-                  folderPage
-                })
-              } else {
-                startAddTile({
-                  wsId: activeWorkspaceId,
-                  page: getActivePageForWorkspace(activeWorkspaceId)
-                })
-              }
-            }}
-            className="px-3 py-1.5 rounded-md border border-white/20 bg-white/10 text-xs font-medium text-white/80 hover:bg-white/20 transition-colors"
-          >
-            {openFolder ? 'Add Shortcut' : 'Add Tile'}
-          </button>
-        </div>
-      </div>
-      {/* Speed Dial Grid */}
-      <div
-        ref={containerRef}
-        className="rounded-xl px-2 pb-3"
-        onDoubleClick={() => { /* handled by experimental dial */ }}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${cols}, ${TILE_SIZE}px)`,
-          gap: TILE_GAP,
-          justifyContent: 'start',
-          gridAutoRows: `${TILE_SIZE}px`,
-          minHeight: isExperimental ? `${(TILE_SIZE + TILE_GAP) * 7 - TILE_GAP}px` : undefined
-        }}
-      >
-        {(openFolder
-          ? openFolder.children
-          : (isExperimental ? slots : positioned)
-        ).map((tile, index) => (
-          tile && tile.back ? renderBackTile() : (tile ? renderTile(tile, index) : renderEmptySlot(index))
-        ))}
-      </div>
-
-      {/* Brief internal blur overlay only inside the dial during folder open transition */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          opacity: folderBlur ? 1 : 0,
-          transition: 'opacity 250ms ease',
-          backdropFilter: folderBlur ? 'blur(8px) brightness(0.95)' : 'none',
-          WebkitBackdropFilter: folderBlur ? 'blur(8px) brightness(0.95)' : 'none',
-          zIndex: 4,
-        }}
-      />
-
-      {/* Back button when folder open (bottom center) */}
-      {openFolder && (
-        <div className="absolute left-0 right-0" style={{ bottom: 8 }}>
-          <div className="w-full flex justify-center">
+            !editingTitle ? (
+              <h2 className="text-base font-semibold text-white/90 cursor-text" onClick={() => setEditingTitle(true)}>
+                {title}
+              </h2>
+            ) : (
+              <input
+                autoFocus
+                value={tempTitle}
+                onChange={(e) => setTempTitle(e.target.value)}
+                onBlur={() => { setEditingTitle(false); onTitleChange?.(tempTitle || 'Speed Dial') }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } }}
+                className="bg-white/10 border border-white/20 rounded px-2 py-1 text-sm text-white outline-none"
+              />
+            )
+          )}
+          <div className="flex gap-2">
             <button
-              ref={backButtonRef}
-              className="px-3 py-1 rounded-md text-white/90 hover:text-white transition-colors"
-              onClick={() => setOpenFolder(null)}
-              title="Back"
+              type="button"
+              onClick={() => {
+                if (openFolder?.id) {
+                  startAddTile({
+                    wsId: activeWorkspaceId,
+                    folderId: openFolder.id,
+                    folderPage
+                  })
+                } else {
+                  startAddTile({
+                    wsId: activeWorkspaceId,
+                    page: getActivePageForWorkspace(activeWorkspaceId)
+                  })
+                }
+              }}
+              className="px-3 py-1.5 rounded-md border border-white/20 bg-white/10 text-xs font-medium text-white/80 hover:bg-white/20 transition-colors"
             >
-              Back
+              {openFolder ? 'Add Shortcut' : 'Add Tile'}
             </button>
           </div>
         </div>
-      )}
+        {/* Speed Dial Grid */}
+        <div
+          ref={containerRef}
+          className="rounded-xl px-2 pb-3"
+          onDoubleClick={() => { /* handled by experimental dial */ }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${cols}, ${TILE_SIZE}px)`,
+            gap: TILE_GAP,
+            justifyContent: 'start',
+            gridAutoRows: `${TILE_SIZE}px`,
+            minHeight: isExperimental ? `${(TILE_SIZE + TILE_GAP) * 7 - TILE_GAP}px` : undefined
+          }}
+        >
+          {(openFolder
+            ? openFolder.children
+            : (isExperimental ? slots : positioned)
+          ).map((tile, index) => (
+            tile && tile.back ? renderBackTile() : (tile ? renderTile(tile, index) : renderEmptySlot(index))
+          ))}
+        </div>
 
-      {/* Classic workspace tabs (bottom-right, attached) */}
-      {hasWorkspaceTabs && (
-        <ClassicWorkspaceTabs
-          items={workspaces}
-          activeId={activeWorkspaceId}
-          onSelect={onWorkspaceSelect}
-          onAdd={onWorkspaceAdd}
-          onRemove={onWorkspaceRemove}
-          onReorder={onWorkspaceReorder}
-          onRename={onWorkspaceRename}
-          onChangeIcon={onWorkspaceChangeIcon}
-          iconByName={iconByName}
-          attachToLayer
-          wsButtonStyle={settings?.speedDial?.wsButtons || { background: true, shadow: true, blur: true, matchDialBlur: false }}
-          outerGlow={effectiveGlow}
-          settings={settings}
+        {/* Brief internal blur overlay only inside the dial during folder open transition */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            opacity: folderBlur ? 1 : 0,
+            transition: 'opacity 250ms ease',
+            backdropFilter: folderBlur ? 'blur(8px) brightness(0.95)' : 'none',
+            WebkitBackdropFilter: folderBlur ? 'blur(8px) brightness(0.95)' : 'none',
+            zIndex: 4,
+          }}
         />
-      )}
+
+        {/* Back button when folder open (bottom center) */}
+        {openFolder && (
+          <div className="absolute left-0 right-0" style={{ bottom: 8 }}>
+            <div className="w-full flex justify-center">
+              <button
+                ref={backButtonRef}
+                className="px-3 py-1 rounded-md text-white/90 hover:text-white transition-colors"
+                onClick={() => setOpenFolder(null)}
+                title="Back"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Classic workspace tabs (bottom-right, attached) */}
+        {hasWorkspaceTabs && (
+          <ClassicWorkspaceTabs
+            items={workspaces}
+            activeId={activeWorkspaceId}
+            onSelect={onWorkspaceSelect}
+            onAdd={onWorkspaceAdd}
+            onRemove={onWorkspaceRemove}
+            onReorder={onWorkspaceReorder}
+            onRename={onWorkspaceRename}
+            onChangeIcon={onWorkspaceChangeIcon}
+            iconByName={iconByName}
+            attachToLayer
+            wsButtonStyle={settings?.speedDial?.wsButtons || { background: true, shadow: true, blur: true, matchDialBlur: false }}
+            outerGlow={effectiveGlow}
+            settings={settings}
+          />
+        )}
       </div>
-      
+
       {/* Hidden file inputs */}
       <input
         ref={fileInputRef}
@@ -861,7 +864,7 @@ const VivaldiSpeedDial = ({
         onChange={handleIconUpload}
         className="hidden"
       />
-      
+
       {/* Add Tile Dialog */}
       <AnimatePresence>
         {showAddDialog && (
@@ -887,7 +890,7 @@ const VivaldiSpeedDial = ({
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              
+
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-2">
@@ -901,7 +904,7 @@ const VivaldiSpeedDial = ({
                     placeholder="Enter title"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-2">
                     URL
@@ -914,7 +917,7 @@ const VivaldiSpeedDial = ({
                     placeholder="https://example.com"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-2">
                     Custom Icon (optional)
@@ -926,7 +929,7 @@ const VivaldiSpeedDial = ({
                           if (fileInputRef.current) {
                             fileInputRef.current.setAttribute('data-directory-hint', '/uploads/icons')
                           }
-                        } catch {}
+                        } catch { }
                         fileInputRef.current?.click()
                       }}
                       className="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white/80 transition-colors flex items-center gap-2"
@@ -943,7 +946,7 @@ const VivaldiSpeedDial = ({
                     )}
                   </div>
                 </div>
-                
+
                 <div className="flex justify-end pt-4">
                   <button
                     onClick={handleAddTile}
@@ -958,7 +961,7 @@ const VivaldiSpeedDial = ({
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* Hidden input for editing tile icon */}
       <input
         ref={editIconInputRef}
@@ -967,7 +970,7 @@ const VivaldiSpeedDial = ({
         onChange={handleEditIconFile}
         className="hidden"
       />
-      
+
       {/* Drag instructions */}
       {dragState.isDragging && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-black/80 backdrop-blur-md rounded-lg px-4 py-2 border border-white/20 z-50">
@@ -1056,11 +1059,10 @@ const ClassicWorkspaceTabs = ({ items, activeId, onSelect, onAdd, onRemove, onRe
               <button
                 onMouseDown={(e) => onMouseDown(e, ws.id)}
                 onClick={() => onSelect?.(ws.id)}
-                className={`relative flex items-center justify-center rounded-t-lg classic-workspace-button ${
-                  isActive
+                className={`relative flex items-center justify-center rounded-t-lg classic-workspace-button ${isActive
                     ? `${wsButtonStyle.background ? 'bg-white/15 ' : 'bg-transparent '} -mb-[2px] classic-active`
                     : `${wsButtonStyle.background ? 'bg-white/8 hover:bg-white/12 ' : 'bg-transparent hover:bg-white/5 '} translate-y-[6px] hover:translate-y-[2px] classic-inactive`
-                } ${isOver ? 'ring-2 ring-cyan-400/60' : ''} ${drag.dragging && drag.id === ws.id ? 'dragging' : ''} transition-all duration-200 ease-out`}
+                  } ${isOver ? 'ring-2 ring-cyan-400/60' : ''} ${drag.dragging && drag.id === ws.id ? 'dragging' : ''} transition-all duration-200 ease-out`}
                 style={{
                   width: 44,
                   height: 28,
@@ -1080,7 +1082,7 @@ const ClassicWorkspaceTabs = ({ items, activeId, onSelect, onAdd, onRemove, onRe
                   // Modern border styling
                   borderColor: isActive ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)',
                   // Subtle gradient overlay
-                  background: isActive 
+                  background: isActive
                     ? 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%)'
                     : 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)'
                 }}
@@ -1095,7 +1097,7 @@ const ClassicWorkspaceTabs = ({ items, activeId, onSelect, onAdd, onRemove, onRe
               <ContextMenuSub>
                 <ContextMenuSubTrigger>Change Icon</ContextMenuSubTrigger>
                 <ContextMenuSubContent>
-                  {['Home','Layers','Grid2X2','AppWindow','LayoutList'].map(name => {
+                  {['Home', 'Layers', 'Grid2X2', 'AppWindow', 'LayoutList'].map(name => {
                     const Ico = iconByName(name)
                     return (
                       <ContextMenuItem key={name} onClick={() => onChangeIcon?.(ws.id, name)}>
@@ -1463,7 +1465,7 @@ function ExperimentalDial({
     return sel
   }, [settings?.speedDial?.workspaceTextFonts])
   const resolveFontGlobal = useMemo(() => resolveWorkspaceFontLocal(activeWorkspaceId), [activeWorkspaceId, resolveWorkspaceFontLocal])
-  
+
   const onTabMouseDown = (e, id) => {
     e.preventDefault()
     if (!tabsReorderEnabled) return
@@ -1882,6 +1884,125 @@ function ExperimentalDial({
     setTransientGlow('')
     setTabTransientGlows((prev) => (prev && Object.keys(prev).length ? {} : prev))
   }, [transientModeActive, glowHoverEnabled])
+
+  // Scroll to change workspace functionality for speed dial
+  const scrollToChangeWorkspace = !!(settings?.general?.scrollToChangeWorkspace)
+  const scrollToChangeWorkspaceIncludeSpeedDial = !!(settings?.general?.scrollToChangeWorkspaceIncludeSpeedDial)
+  const scrollToChangeWorkspaceIncludeWholeColumn = !!(settings?.general?.scrollToChangeWorkspaceIncludeWholeColumn)
+  const scrollToChangeWorkspaceResistance = !!(settings?.general?.scrollToChangeWorkspaceResistance)
+  const scrollToChangeWorkspaceResistanceIntensity = Number(settings?.general?.scrollToChangeWorkspaceResistanceIntensity ?? 100)
+  const speedDialScrollEnabled = scrollToChangeWorkspace
+  const speedDialScrollTimeoutRef = useRef(null)
+  const speedDialLastScrollTimeRef = useRef(0)
+  const speedDialIsMouseOverRef = useRef(false)
+  const speedDialScrollAccumulatorRef = useRef(0) // For resistance scrolling
+
+  const handleSpeedDialWheel = useCallback((e) => {
+    if (!speedDialScrollEnabled || !dialWrapperRef.current || !workspaces || workspaces.length === 0) return
+
+    const container = dialWrapperRef.current
+    const rect = container.getBoundingClientRect()
+    const mouseY = e.clientY
+
+    // If includeWholeColumn is enabled, allow scrolling anywhere in speed dial
+    if (scrollToChangeWorkspaceIncludeWholeColumn) {
+      // Allow scrolling anywhere - no position restrictions
+    } else if (!scrollToChangeWorkspaceIncludeSpeedDial) {
+      // If includeSpeedDial is false, only allow scrolling in bottom 20% of speed dial
+      const bottomThreshold = rect.top + (rect.height * 0.8) // Bottom 20%
+      if (mouseY < bottomThreshold) {
+        return // Not in bottom area, ignore scroll
+      }
+    } else {
+      // If includeSpeedDial is true but whole column is false, check if mouse is over container
+      if (!speedDialIsMouseOverRef.current) return
+    }
+
+    // Throttle scroll events (max once per 150ms)
+    const now = Date.now()
+    if (now - speedDialLastScrollTimeRef.current < 150) {
+      e.preventDefault()
+      return
+    }
+    speedDialLastScrollTimeRef.current = now
+
+    // Determine scroll direction and delta
+    const deltaY = e.deltaY
+
+    // Resistance scrolling: accumulate scroll delta before changing workspace
+    if (scrollToChangeWorkspaceResistance) {
+      speedDialScrollAccumulatorRef.current += Math.abs(deltaY)
+      const RESISTANCE_THRESHOLD = Math.max(50, Math.min(500, scrollToChangeWorkspaceResistanceIntensity))
+      if (speedDialScrollAccumulatorRef.current < RESISTANCE_THRESHOLD) {
+        e.preventDefault()
+        return
+      }
+      speedDialScrollAccumulatorRef.current = 0 // Reset accumulator
+    }
+
+    // Prevent default scroll behavior
+    e.preventDefault()
+    e.stopPropagation()
+
+    // Clear any pending timeout
+    if (speedDialScrollTimeoutRef.current) {
+      clearTimeout(speedDialScrollTimeoutRef.current)
+    }
+
+    // Determine scroll direction
+    const scrollDown = deltaY > 0
+
+    // Find current workspace index
+    const currentIndex = workspaces.findIndex(ws => ws.id === activeWorkspaceId)
+    if (currentIndex === -1) return
+
+    // Calculate next workspace index
+    let nextIndex
+    if (scrollDown) {
+      nextIndex = currentIndex < workspaces.length - 1 ? currentIndex + 1 : 0
+    } else {
+      nextIndex = currentIndex > 0 ? currentIndex - 1 : workspaces.length - 1
+    }
+
+    // Change workspace immediately
+    const nextWorkspace = workspaces[nextIndex]
+    if (nextWorkspace && nextWorkspace.id !== activeWorkspaceId) {
+      onWorkspaceSelect?.(nextWorkspace.id)
+    }
+  }, [speedDialScrollEnabled, scrollToChangeWorkspaceIncludeSpeedDial, scrollToChangeWorkspaceIncludeWholeColumn, scrollToChangeWorkspaceResistance, scrollToChangeWorkspaceResistanceIntensity, workspaces, activeWorkspaceId, onWorkspaceSelect])
+
+  useEffect(() => {
+    if (!speedDialScrollEnabled || !dialWrapperRef.current) return
+
+    const container = dialWrapperRef.current
+    
+    const handleMouseEnter = () => {
+      speedDialIsMouseOverRef.current = true
+      speedDialScrollAccumulatorRef.current = 0 // Reset on mouse enter
+    }
+    
+    const handleMouseLeave = () => {
+      speedDialIsMouseOverRef.current = false
+      speedDialScrollAccumulatorRef.current = 0 // Reset on mouse leave
+    }
+    
+    if (scrollToChangeWorkspaceIncludeSpeedDial) {
+      container.addEventListener('mouseenter', handleMouseEnter)
+      container.addEventListener('mouseleave', handleMouseLeave)
+    }
+    container.addEventListener('wheel', handleSpeedDialWheel, { passive: false })
+
+    return () => {
+      if (scrollToChangeWorkspaceIncludeSpeedDial) {
+        container.removeEventListener('mouseenter', handleMouseEnter)
+        container.removeEventListener('mouseleave', handleMouseLeave)
+      }
+      container.removeEventListener('wheel', handleSpeedDialWheel)
+      if (speedDialScrollTimeoutRef.current) {
+        clearTimeout(speedDialScrollTimeoutRef.current)
+      }
+    }
+  }, [speedDialScrollEnabled, scrollToChangeWorkspaceIncludeSpeedDial, handleSpeedDialWheel])
 
   // Handle header transient effect when URL changes (glow handled separately above)
   useEffect(() => {
@@ -2540,16 +2661,16 @@ function ExperimentalDial({
       const BACK_GX = 0
       const BACK_GY = activeRows - 1
       const overBackCell = (gxRaw === BACK_GX && gyRaw === BACK_GY)
-    setDrag(prev => ({
-      ...prev,
-      drop: {
-        gx,
-        gy,
-        page: prev.drop?.page ?? clampPage(prev.tile?.page ?? getActivePageForWorkspace(prev.wsId || activeWorkspaceId)),
-        back: overBackCell
-      },
-      mergeIntent: false
-    }))
+      setDrag(prev => ({
+        ...prev,
+        drop: {
+          gx,
+          gy,
+          page: prev.drop?.page ?? clampPage(prev.tile?.page ?? getActivePageForWorkspace(prev.wsId || activeWorkspaceId)),
+          back: overBackCell
+        },
+        mergeIntent: false
+      }))
     } else {
       const { gx, gy, page } = posFromEvent(drag.wsId || activeWorkspaceId, e)
       setDrag(prev => ({
@@ -2781,7 +2902,7 @@ function ExperimentalDial({
     return !!target.closest('[data-role="tile"], button, a, input, textarea, select, [contenteditable="true"], [data-prevent-add-tile]')
   }
 
-  const devDebug = (...args) => { try { if (import.meta?.env?.DEV) console.debug(...args) } catch {} }
+  const devDebug = (...args) => { try { if (import.meta?.env?.DEV) console.debug(...args) } catch { } }
 
   const startAddTile = useCallback((options = {}) => {
     devDebug('[SpeedDial] startAddTile invoked', options)
@@ -2822,7 +2943,7 @@ function ExperimentalDial({
         const savedUrl = await trySaveIconToProject(dataUrl, 'icon')
         assignedFavicon = savedUrl || dataUrl
       } catch {
-        try { assignedFavicon = await fetchFavicon(newTileData.altFavicon) } catch {}
+        try { assignedFavicon = await fetchFavicon(newTileData.altFavicon) } catch { }
       }
     }
     const baseTile = {
@@ -3035,7 +3156,7 @@ function ExperimentalDial({
           <defs>
             <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" style="stop-color:hsl(${hue},70%,50%);stop-opacity:1" />
-              <stop offset="100%" style="stop-color:hsl(${(hue+30)%360},70%,40%);stop-opacity:1" />
+              <stop offset="100%" style="stop-color:hsl(${(hue + 30) % 360},70%,40%);stop-opacity:1" />
             </linearGradient>
           </defs>
           <rect width="64" height="64" rx="8" fill="url(#g)"/>
@@ -3393,7 +3514,7 @@ function ExperimentalDial({
           if (nextMode === selectedHeaderMode) return;
           try {
             window.dispatchEvent(new CustomEvent('app-set-header-color-mode', { detail: { workspaceId: headerModeKey, mode: nextMode } }));
-          } catch {}
+          } catch { }
         };
         // Ensure banner shows during hover preview even if transient not currently active
         const bannerPreviewActive = !!previewWorkspace
@@ -3411,9 +3532,9 @@ function ExperimentalDial({
           // Subtle arc/blur when wrap enhancement is enabled
           ...(wrapEnhancement
             ? {
-                filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.25)) blur(0.35px)',
-                transform: 'perspective(1200px) rotateX(1.5deg)',
-              }
+              filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.25)) blur(0.35px)',
+              transform: 'perspective(1200px) rotateX(1.5deg)',
+            }
             : {}),
         }
         const baseBannerColor = effectiveHeaderColor || resolveColor || defaultTextColor
@@ -3440,7 +3561,7 @@ function ExperimentalDial({
         // Give overscan a wider spread past the viewport edges and wrap text slightly around the dial
         const overscanOffset = headerBannerOverscan ? (wrapEnhancement ? 2.6 : 2.35) : 0.56
         const bannerTextSize = 'text-[12px] md:text-[13px]'
-  const viewportWidthPx = effectiveHeaderWidthPx + (overscanOffset * 2 * 16)
+        const viewportWidthPx = effectiveHeaderWidthPx + (overscanOffset * 2 * 16)
         const baseSegments = headerEffectMode === 'sustained' ? 12 : 8
         const fontSizePx = Math.max(0.94 * 16 * headerBannerScale, 1)
         const approxCharWidth = Math.max(fontSizePx * 0.68, 7)
@@ -3468,7 +3589,7 @@ function ExperimentalDial({
               <span
                 key={`banner-segment-${groupIndex}-${idx}`}
                 className="whitespace-nowrap"
-                // Removed scaleX transform
+              // Removed scaleX transform
               >
                 {headerBannerText}
               </span>
@@ -3539,8 +3660,8 @@ function ExperimentalDial({
         const bannerMotionProps = headerEffectMode === 'sustained' ? sustainedMotion : transientMotion
         const dialGlowShadow = effectiveGlow
           ? (transientModeActive
-              ? effectiveGlow
-              : applySoftSwitchGlow(settings, activeWorkspaceId, effectiveHardWorkspaceId, 'speed-dial'))
+            ? effectiveGlow
+            : applySoftSwitchGlow(settings, activeWorkspaceId, effectiveHardWorkspaceId, 'speed-dial'))
           : ''
 
         return (
@@ -3713,25 +3834,25 @@ function ExperimentalDial({
                     let left = 0, top = 0
                     if (openFolder) {
                       const fallbackSlot = (() => {
-                    // Compute nth slot within the folder grid area
-                    let n = 0
-                    for (let gy = 0; gy < FOLDER_ROWS; gy++) {
-                      for (let gx = 0; gx < activeCols; gx++) {
-                        if (n === absoluteIdx) return { gx, gy }
-                        n++
-                      }
-                    }
-                    return { gx: 1, gy: 0 }
-                  })()
-                  const gx = clampGX(typeof t.gridX === 'number' ? t.gridX : fallbackSlot.gx)
-                  const gy = clampGYFolder(typeof t.gridY === 'number' ? t.gridY : fallbackSlot.gy)
-                  left = gx * CELL
-                  top = gy * CELL
-                } else {
-                  const gx = clampGX(typeof t.gridX === 'number' ? t.gridX : 0)
-                  const gy = clampGY(typeof t.gridY === 'number' ? t.gridY : 0)
-                  left = gx * CELL
-                  top = gy * CELL
+                        // Compute nth slot within the folder grid area
+                        let n = 0
+                        for (let gy = 0; gy < FOLDER_ROWS; gy++) {
+                          for (let gx = 0; gx < activeCols; gx++) {
+                            if (n === absoluteIdx) return { gx, gy }
+                            n++
+                          }
+                        }
+                        return { gx: 1, gy: 0 }
+                      })()
+                      const gx = clampGX(typeof t.gridX === 'number' ? t.gridX : fallbackSlot.gx)
+                      const gy = clampGYFolder(typeof t.gridY === 'number' ? t.gridY : fallbackSlot.gy)
+                      left = gx * CELL
+                      top = gy * CELL
+                    } else {
+                      const gx = clampGX(typeof t.gridX === 'number' ? t.gridX : 0)
+                      const gy = clampGY(typeof t.gridY === 'number' ? t.gridY : 0)
+                      left = gx * CELL
+                      top = gy * CELL
                     }
                     const isDragging = drag.dragging && drag.tile?.id === t.id
                     let dropLeft = left, dropTop = top
@@ -3749,274 +3870,278 @@ function ExperimentalDial({
                     const isFolder = Array.isArray(t.children)
                     const hasChildren = isFolder && t.children.length > 0
                     const textColorsMap = settings?.speedDial?.workspaceTextColors || {}
-                const previewColor = previewWorkspace ? textColorsMap[previewWorkspace.id] : undefined
-                const hoverLabelColor = (() => {
-                  if (settings?.speedDial?.matchHeaderColor && effectiveHeaderColor) {
-                    return stripAlphaFromHex(effectiveHeaderColor)
-                  }
-                  if (previewColor) {
-                    return stripAlphaFromHex(previewColor)
-                  }
-                  if (settings?.speedDial?.workspaceTextByUrl) {
-                    if (pathMatchesActive) {
+                    const previewColor = previewWorkspace ? textColorsMap[previewWorkspace.id] : undefined
+                    const hoverLabelColor = (() => {
+                      if (settings?.speedDial?.matchHeaderColor && effectiveHeaderColor) {
+                        return stripAlphaFromHex(effectiveHeaderColor)
+                      }
+                      if (previewColor) {
+                        return stripAlphaFromHex(previewColor)
+                      }
+                      if (settings?.speedDial?.workspaceTextByUrl) {
+                        if (pathMatchesActive) {
+                          const col = textColorsMap[activeWorkspaceId]
+                          return col ? stripAlphaFromHex(col) : defaultTextColor
+                        }
+                        return defaultTextColor
+                      }
                       const col = textColorsMap[activeWorkspaceId]
                       return col ? stripAlphaFromHex(col) : defaultTextColor
-                    }
-                    return defaultTextColor
-                  }
-                  const col = textColorsMap[activeWorkspaceId]
-                  return col ? stripAlphaFromHex(col) : defaultTextColor
-                })()
-                const hoverLabelFont = (() => {
-                  if (settings?.speedDial?.matchHeaderFont && bannerFontFamily) return bannerFontFamily
-                  if (previewWorkspace) return resolveWorkspaceFont(previewWorkspace.id)
-                  if (settings?.speedDial?.workspaceTextByUrl) {
-                    return pathMatchesActive ? resolveWorkspaceFont(activeWorkspaceId) : undefined
-                  }
-                  return resolveWorkspaceFont(activeWorkspaceId)
-                })()
+                    })()
+                    const hoverLabelFont = (() => {
+                      if (settings?.speedDial?.matchHeaderFont && bannerFontFamily) return bannerFontFamily
+                      if (previewWorkspace) return resolveWorkspaceFont(previewWorkspace.id)
+                      if (settings?.speedDial?.workspaceTextByUrl) {
+                        return pathMatchesActive ? resolveWorkspaceFont(activeWorkspaceId) : undefined
+                      }
+                      return resolveWorkspaceFont(activeWorkspaceId)
+                    })()
 
-                return (
-                  <ContextMenu key={t.id}>
-                    <ContextMenuTrigger asChild>
-                      <motion.div
-                        data-role="tile"
-                        className={`absolute cursor-pointer group ${settings?.speedDial?.glowTransient ? 'glow-transient' : ''}`}
-                        style={{ 
-                          width: TILE_SIZE, 
-                          height: TILE_SIZE, 
-                          left: isDragging ? dropLeft : left, 
-                          top: isDragging ? dropTop : top,
-                          ...glowTransitionStyles,
-                          zIndex: isDragging ? 9 : 5
-                        }}
-                        onMouseDown={(e) => startDrag(ws.id, t, e)}
-                        onFocus={() => {
-                          if (openFolder) return
-                          if (settings?.speedDial?.glowTransient) {
-                            const pulseWorkspaceId = effectiveHardWorkspaceId || DEFAULT_GLOW_KEY
-                            glowManager.createTransientGlow(pulseWorkspaceId, 200, (glow) => {
-                              setTransientGlow(glow)
-                            })
-                          }
-                        }}
-                        tabIndex={0}
-                        onClick={() => {
-                          if (drag.dragging || drag.justDropped) {
-                            if (drag.justDropped) {
-                              setDrag(prev => prev.justDropped ? { ...prev, justDropped: false } : prev)
-                            }
-                            return
-                          }
-                          if (openFolder) {
-                            // In-folder: clicking opens shortcut
-                            if (t.url) {
-                              const nu = normalizeUrl(t.url)
-                              const href = nu ? nu.href : t.url
-                              if (settings?.general?.openInNewTab) window.open(href, '_blank', 'noopener,noreferrer')
-                              else window.location.href = href
-                            }
-                            return
-                          }
-                          // Allow folder navigation in edit mode (edit mode persists)
-                          if (isFolder) {
-                            setOpenFolder(t)
-                            setFolderPage(0)
-                            setFolderBlur(true)
-                            setTimeout(() => setFolderBlur(false), 250)
-                          } else if (!editMode && t.url) {
-                            const nu = normalizeUrl(t.url)
-                            const href = nu ? nu.href : t.url
-                            if (settings?.general?.openInNewTab) window.open(href, '_blank', 'noopener,noreferrer')
-                            else window.location.href = href
-                          }
-                        }}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.97 }}
-                      >
-                        <div className={`w-full h-full rounded-lg overflow-hidden flex items-center justify-center ${isFolder && hasChildren ? 'bg-white/10' : 'bg-transparent'}`}>
-                          {isFolder ? (
-                            hasChildren ? (
-                              <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-0.5 p-0.5 bg-white/5 rounded">
-                                {t.children.slice(0,4).map((child, i) => (
-                                  <img key={i} src={child.favicon || (child.url ? (faviconCache[getFaviconKey(child.url)] || '') : '')} alt={child.title}
-                                    className="w-full h-full object-cover rounded" onError={(e) => { e.currentTarget.src = child.url ? generateFallbackIcon(child.url) : '' }} />
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-white/10 rounded">
-                                <Folder className="w-5 h-5 text-white/65" />
-                              </div>
-                            )
-                          ) : (
-                            (t.favicon || (t.url ? faviconCache[getFaviconKey(t.url)] : '')) ? (
-                              <img src={t.favicon || faviconCache[getFaviconKey(t.url)]} alt={t.title} className="w-full h-full object-contain" onError={(e) => { if (t.url) e.currentTarget.src = generateFallbackIcon(t.url) }} />
-                            ) : (
-                              <span className="text-white/80 text-xs font-semibold" style={{ color: settings?.speedDial?.matchHeaderColor && effectiveHeaderColor ? stripAlphaFromHex(effectiveHeaderColor) : undefined }}>
-                                {(t.title || '?').slice(0,2)}
-                              </span>
-                            )
-                          )}
-                        </div>
-                        {/* Hover label: bold, no background, appears on hover */}
-                        <div
-                          className="pointer-events-none absolute top-full mt-1 left-1/2 -translate-x-1/2 text-[10px] font-semibold opacity-0 group-hover:opacity-100"
-                          style={{
-                            color: hoverLabelColor,
-                            fontFamily: hoverLabelFont || undefined,
-                          }}
-                        >
-                          {isFolder ? (t.title || 'Folder') : (t.title || '')}
-                        </div>
-                      </motion.div>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem onClick={() => {
-                        if (editMode) return
-                        if (isFolder) {
-                          setOpenFolder(t)
-                          setFolderPage(0)
-                          setFolderBlur(true)
-                          setTimeout(() => setFolderBlur(false), 250)
-                          return
-                        }
-                        const targetUrl = t.url
-                        const nu = normalizeUrl(targetUrl)
-                        const href = nu ? nu.href : targetUrl
-                        const target = settings?.general?.openInNewTab ? '_blank' : '_self'
-                        window.open(href, target)
-                      }}>
-                        <LinkIcon className="w-4 h-4" /> Open
-                      </ContextMenuItem>
-                      <ContextMenuItem onClick={() => setEditModeAndReorder(!editMode)}>
-                        <Edit3 className="w-4 h-4" /> {editMode ? 'Exit Edit Mode' : 'Enter Edit Mode'}
-                      </ContextMenuItem>
-                      {/* Move back to root when inside an open folder */}
-                      {openFolder && !Array.isArray(t.children) && (
-                        <ContextMenuItem onClick={() => {
-                          const wsId = ws.id
-                          const child = t
-                          upsertTiles(wsId, (list) => {
-                            const idx = list.findIndex(it => it.id === openFolder.id)
-                            if (idx === -1) return list
-                            const folder = list[idx]
-                            const remaining = (folder.children || []).filter(c => c.id !== child.id)
-                            const before = list.slice(0, idx)
-                            const after = list.slice(idx + 1)
-                            const folderPage = clampPage(openFolder.page ?? getActivePageForWorkspace(wsId))
-                            const spot1 = nearestFree(wsId, 0, 0, { page: folderPage })
-                            if (spot1.createdNewPage) {
-                              setActivePageForWorkspace(wsId, spot1.page)
-                            }
-                            const movedOut = { ...child, gridX: spot1.gx, gridY: spot1.gy, page: spot1.page }
-                            if (remaining.length === 0) {
-                              return [...before, movedOut, ...after]
-                            }
-                            if (remaining.length === 1) {
-                              const last = remaining[0]
-                              let spot2 = nearestFree(wsId, spot1.gx + 1, spot1.gy, { page: folderPage })
-                              if (spot2.gx === spot1.gx && spot2.gy === spot1.gy) {
-                                spot2 = nearestFree(wsId, spot1.gx + 2, spot1.gy, { page: folderPage })
+                    return (
+                      <ContextMenu key={t.id}>
+                        <ContextMenuTrigger asChild>
+                          <motion.div
+                            data-role="tile"
+                            className={`absolute cursor-pointer group ${settings?.speedDial?.glowTransient ? 'glow-transient' : ''}`}
+                            style={{
+                              width: TILE_SIZE,
+                              height: TILE_SIZE,
+                              left: isDragging ? dropLeft : left,
+                              top: isDragging ? dropTop : top,
+                              ...glowTransitionStyles,
+                              zIndex: isDragging ? 9 : 5
+                            }}
+                            onMouseDown={(e) => startDrag(ws.id, t, e)}
+                            onFocus={() => {
+                              if (openFolder) return
+                              if (settings?.speedDial?.glowTransient) {
+                                const pulseWorkspaceId = effectiveHardWorkspaceId || DEFAULT_GLOW_KEY
+                                glowManager.createTransientGlow(pulseWorkspaceId, 200, (glow) => {
+                                  setTransientGlow(glow)
+                                })
                               }
-                              if (spot2.createdNewPage) {
-                                setActivePageForWorkspace(wsId, spot2.page)
+                            }}
+                            tabIndex={0}
+                            onClick={() => {
+                              if (drag.dragging || drag.justDropped) {
+                                if (drag.justDropped) {
+                                  setDrag(prev => prev.justDropped ? { ...prev, justDropped: false } : prev)
+                                }
+                                return
                               }
-                              const movedLast = { ...last, gridX: spot2.gx, gridY: spot2.gy, page: spot2.page }
-                              return [...before, movedOut, movedLast, ...after]
-                            }
-                            return [...before, { ...folder, children: remaining }, movedOut, ...after]
-                          })
-                          setOpenFolder(null)
-                        }}>
-                          Move back
-                        </ContextMenuItem>
-                      )}
-                      {isFolder ? (
-                        <ContextMenuItem onClick={() => renameFolder(ws.id, t)}>Rename Folder</ContextMenuItem>
-                      ) : (
-                        <ContextMenuItem onClick={() => renameTile(ws.id, t.id)}>
-                          <Edit3 className="w-4 h-4" /> Rename
-                        </ContextMenuItem>
-                      )}
-                      {!Array.isArray(t.children) && (
-                        <>
+                              if (openFolder) {
+                                // In-folder: clicking opens shortcut
+                                if (t.url) {
+                                  const nu = normalizeUrl(t.url)
+                                  const href = nu ? nu.href : t.url
+                                  if (settings?.general?.openInNewTab) window.open(href, '_blank', 'noopener,noreferrer')
+                                  else window.location.href = href
+                                }
+                                return
+                              }
+                              // Allow folder navigation in edit mode (edit mode persists)
+                              if (isFolder) {
+                                setOpenFolder(t)
+                                setFolderPage(0)
+                                setFolderBlur(true)
+                                setTimeout(() => setFolderBlur(false), 250)
+                              } else if (!editMode && t.url) {
+                                const nu = normalizeUrl(t.url)
+                                const href = nu ? nu.href : t.url
+                                if (settings?.general?.openInNewTab) window.open(href, '_blank', 'noopener,noreferrer')
+                                else window.location.href = href
+                              }
+                            }}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.97 }}
+                          >
+                            <div className={`w-full h-full rounded-lg overflow-hidden flex items-center justify-center ${isFolder && hasChildren ? 'bg-white/10' : 'bg-transparent'}`}>
+                              {isFolder ? (
+                                hasChildren ? (
+                                  <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-0.5 p-0.5 bg-white/5 rounded">
+                                    {t.children.slice(0, 4).map((child, i) => (
+                                      <img key={i} src={child.favicon || (child.url ? (faviconCache[getFaviconKey(child.url)] || '') : '')} alt={child.title}
+                                        className="w-full h-full object-cover rounded" onError={(e) => { e.currentTarget.src = child.url ? generateFallbackIcon(child.url) : '' }}
+                                        style={{ filter: settings?.iconTheming?.enabled ? 'url(#icon-theme-filter)' : 'none' }}
+                                      />
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center bg-white/10 rounded">
+                                    <Folder className="w-5 h-5 text-white/65" />
+                                  </div>
+                                )
+                              ) : (
+                                (t.favicon || (t.url ? faviconCache[getFaviconKey(t.url)] : '')) ? (
+                                  <img src={t.favicon || faviconCache[getFaviconKey(t.url)]} alt={t.title} className="w-full h-full object-contain" onError={(e) => { if (t.url) e.currentTarget.src = generateFallbackIcon(t.url) }}
+                                    style={{ filter: settings?.iconTheming?.enabled ? 'url(#icon-theme-filter)' : 'none' }}
+                                  />
+                                ) : (
+                                  <span className="text-white/80 text-xs font-semibold" style={{ color: settings?.speedDial?.matchHeaderColor && effectiveHeaderColor ? stripAlphaFromHex(effectiveHeaderColor) : undefined }}>
+                                    {(t.title || '?').slice(0, 2)}
+                                  </span>
+                                )
+                              )}
+                            </div>
+                            {/* Hover label: bold, no background, appears on hover */}
+                            <div
+                              className="pointer-events-none absolute top-full mt-1 left-1/2 -translate-x-1/2 text-[10px] font-semibold opacity-0 group-hover:opacity-100"
+                              style={{
+                                color: hoverLabelColor,
+                                fontFamily: hoverLabelFont || undefined,
+                              }}
+                            >
+                              {isFolder ? (t.title || 'Folder') : (t.title || '')}
+                            </div>
+                          </motion.div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
                           <ContextMenuItem onClick={() => {
-                            setEditIconTarget({ wsId: ws.id, tileId: t.id, folderId: openFolder?.id || null })
-                            // try to hint file dialog toward uploads/icons within project
-                            try {
-                              if (fileInputRef.current) {
-                                const hint = '/uploads/icons'
-                                fileInputRef.current.setAttribute('data-directory-hint', hint)
-                              }
-                            } catch {}
-                            editIconRef.current?.click()
+                            if (editMode) return
+                            if (isFolder) {
+                              setOpenFolder(t)
+                              setFolderPage(0)
+                              setFolderBlur(true)
+                              setTimeout(() => setFolderBlur(false), 250)
+                              return
+                            }
+                            const targetUrl = t.url
+                            const nu = normalizeUrl(targetUrl)
+                            const href = nu ? nu.href : targetUrl
+                            const target = settings?.general?.openInNewTab ? '_blank' : '_self'
+                            window.open(href, target)
                           }}>
-                            <Upload className="w-4 h-4" /> Change Icon
+                            <LinkIcon className="w-4 h-4" /> Open
                           </ContextMenuItem>
-                          <ContextMenuItem onClick={() => duplicateTile(ws.id, t)}>
-                            <Copy className="w-4 h-4" /> Duplicate Shortcut
+                          <ContextMenuItem onClick={() => setEditModeAndReorder(!editMode)}>
+                            <Edit3 className="w-4 h-4" /> {editMode ? 'Exit Edit Mode' : 'Enter Edit Mode'}
                           </ContextMenuItem>
-                          <ContextMenuItem onClick={() => updateTileIcon(ws.id, t.id, { folderId: openFolder?.id || null, favicon: null })}>
-                            <Image className="w-4 h-4" /> Reset Icon
+                          {/* Move back to root when inside an open folder */}
+                          {openFolder && !Array.isArray(t.children) && (
+                            <ContextMenuItem onClick={() => {
+                              const wsId = ws.id
+                              const child = t
+                              upsertTiles(wsId, (list) => {
+                                const idx = list.findIndex(it => it.id === openFolder.id)
+                                if (idx === -1) return list
+                                const folder = list[idx]
+                                const remaining = (folder.children || []).filter(c => c.id !== child.id)
+                                const before = list.slice(0, idx)
+                                const after = list.slice(idx + 1)
+                                const folderPage = clampPage(openFolder.page ?? getActivePageForWorkspace(wsId))
+                                const spot1 = nearestFree(wsId, 0, 0, { page: folderPage })
+                                if (spot1.createdNewPage) {
+                                  setActivePageForWorkspace(wsId, spot1.page)
+                                }
+                                const movedOut = { ...child, gridX: spot1.gx, gridY: spot1.gy, page: spot1.page }
+                                if (remaining.length === 0) {
+                                  return [...before, movedOut, ...after]
+                                }
+                                if (remaining.length === 1) {
+                                  const last = remaining[0]
+                                  let spot2 = nearestFree(wsId, spot1.gx + 1, spot1.gy, { page: folderPage })
+                                  if (spot2.gx === spot1.gx && spot2.gy === spot1.gy) {
+                                    spot2 = nearestFree(wsId, spot1.gx + 2, spot1.gy, { page: folderPage })
+                                  }
+                                  if (spot2.createdNewPage) {
+                                    setActivePageForWorkspace(wsId, spot2.page)
+                                  }
+                                  const movedLast = { ...last, gridX: spot2.gx, gridY: spot2.gy, page: spot2.page }
+                                  return [...before, movedOut, movedLast, ...after]
+                                }
+                                return [...before, { ...folder, children: remaining }, movedOut, ...after]
+                              })
+                              setOpenFolder(null)
+                            }}>
+                              Move back
+                            </ContextMenuItem>
+                          )}
+                          {isFolder ? (
+                            <ContextMenuItem onClick={() => renameFolder(ws.id, t)}>Rename Folder</ContextMenuItem>
+                          ) : (
+                            <ContextMenuItem onClick={() => renameTile(ws.id, t.id)}>
+                              <Edit3 className="w-4 h-4" /> Rename
+                            </ContextMenuItem>
+                          )}
+                          {!Array.isArray(t.children) && (
+                            <>
+                              <ContextMenuItem onClick={() => {
+                                setEditIconTarget({ wsId: ws.id, tileId: t.id, folderId: openFolder?.id || null })
+                                // try to hint file dialog toward uploads/icons within project
+                                try {
+                                  if (fileInputRef.current) {
+                                    const hint = '/uploads/icons'
+                                    fileInputRef.current.setAttribute('data-directory-hint', hint)
+                                  }
+                                } catch { }
+                                editIconRef.current?.click()
+                              }}>
+                                <Upload className="w-4 h-4" /> Change Icon
+                              </ContextMenuItem>
+                              <ContextMenuItem onClick={() => duplicateTile(ws.id, t)}>
+                                <Copy className="w-4 h-4" /> Duplicate Shortcut
+                              </ContextMenuItem>
+                              <ContextMenuItem onClick={() => updateTileIcon(ws.id, t.id, { folderId: openFolder?.id || null, favicon: null })}>
+                                <Image className="w-4 h-4" /> Reset Icon
+                              </ContextMenuItem>
+                            </>
+                          )}
+                          {/* Move across workspaces and pages (root-level only) */}
+                          {!openFolder && (
+                            <ContextMenuSub>
+                              <ContextMenuSubTrigger>Move to</ContextMenuSubTrigger>
+                              <ContextMenuSubContent>
+                                {workspaces.map(dest => {
+                                  const wsTiles = tilesOf(dest.id)
+                                  const usedPages = Array.from(new Set(wsTiles.map(x => clampPage(x.page ?? 0)))).sort((a, b) => a - b)
+                                  const totalPages = Math.max(1, (usedPages.length > 0 ? (Math.max(...usedPages) + 1) : 1))
+                                  const pages = Array.from({ length: totalPages })
+                                  return (
+                                    <ContextMenuSub key={`mv-${dest.id}`}>
+                                      <ContextMenuSubTrigger>{dest.name}</ContextMenuSubTrigger>
+                                      <ContextMenuSubContent>
+                                        {pages.map((_, idx) => (
+                                          <ContextMenuItem key={`mv-${dest.id}-p-${idx}`} onClick={() => moveTileToWorkspaceAndPage(ws.id, dest.id, t, idx)}>
+                                            Page {idx + 1}
+                                          </ContextMenuItem>
+                                        ))}
+                                        <ContextMenuSeparator />
+                                        <ContextMenuItem onClick={() => {
+                                          const newPage = totalPages
+                                          moveTileToWorkspaceAndPage(ws.id, dest.id, t, newPage)
+                                          setActivePageForWorkspace(dest.id, newPage)
+                                        }}>
+                                          New Page
+                                        </ContextMenuItem>
+                                      </ContextMenuSubContent>
+                                    </ContextMenuSub>
+                                  )
+                                })}
+                              </ContextMenuSubContent>
+                            </ContextMenuSub>
+                          )}
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            variant="destructive"
+                            onClick={() => {
+                              if (isFolder) {
+                                setFolderDeleteDialog({
+                                  open: true,
+                                  wsId: ws.id,
+                                  folderId: t.id,
+                                  folderTitle: t.title || 'Folder',
+                                  deleteChildren: false
+                                })
+                              } else {
+                                removeTile(ws.id, t.id)
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" /> Delete {isFolder ? 'Folder…' : 'Shortcut'}
                           </ContextMenuItem>
-                        </>
-                      )}
-                      {/* Move across workspaces and pages (root-level only) */}
-                      {!openFolder && (
-                      <ContextMenuSub>
-                        <ContextMenuSubTrigger>Move to</ContextMenuSubTrigger>
-                        <ContextMenuSubContent>
-                          {workspaces.map(dest => {
-                            const wsTiles = tilesOf(dest.id)
-                            const usedPages = Array.from(new Set(wsTiles.map(x => clampPage(x.page ?? 0)))).sort((a,b) => a-b)
-                            const totalPages = Math.max(1, (usedPages.length > 0 ? (Math.max(...usedPages) + 1) : 1))
-                            const pages = Array.from({ length: totalPages })
-                            return (
-                              <ContextMenuSub key={`mv-${dest.id}`}>
-                                <ContextMenuSubTrigger>{dest.name}</ContextMenuSubTrigger>
-                                <ContextMenuSubContent>
-                                  {pages.map((_, idx) => (
-                                    <ContextMenuItem key={`mv-${dest.id}-p-${idx}`} onClick={() => moveTileToWorkspaceAndPage(ws.id, dest.id, t, idx)}>
-                                      Page {idx + 1}
-                                    </ContextMenuItem>
-                                  ))}
-                                  <ContextMenuSeparator />
-                                  <ContextMenuItem onClick={() => {
-                                    const newPage = totalPages
-                                    moveTileToWorkspaceAndPage(ws.id, dest.id, t, newPage)
-                                    setActivePageForWorkspace(dest.id, newPage)
-                                  }}>
-                                    New Page
-                                  </ContextMenuItem>
-                                </ContextMenuSubContent>
-                              </ContextMenuSub>
-                            )
-                          })}
-                        </ContextMenuSubContent>
-                      </ContextMenuSub>
-                      )}
-                      <ContextMenuSeparator />
-                      <ContextMenuItem
-                        variant="destructive"
-                        onClick={() => {
-                          if (isFolder) {
-                            setFolderDeleteDialog({
-                              open: true,
-                              wsId: ws.id,
-                              folderId: t.id,
-                              folderTitle: t.title || 'Folder',
-                              deleteChildren: false
-                            })
-                          } else {
-                            removeTile(ws.id, t.id)
-                          }
-                        }}
-                      >
-                      <Trash2 className="w-4 h-4" /> Delete {isFolder ? 'Folder…' : 'Shortcut'}
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
-              )
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    )
                   })}
                 </div>
               </ContextMenuTrigger>
@@ -4028,17 +4153,17 @@ function ExperimentalDial({
                       const target = (cell && cell.wsId === ws.id)
                         ? cell
                         : {
-                            wsId: ws.id,
-                            gx: 0,
-                            gy: 0,
-                            page: getActivePageForWorkspace(ws.id),
-                          }
+                          wsId: ws.id,
+                          gx: 0,
+                          gy: 0,
+                          page: getActivePageForWorkspace(ws.id),
+                        }
                       createFolderAtCell(target)
                       gridContextCellRef.current = null
                     }}
                   >
-                  <FolderPlus className="w-4 h-4" /> Create folder
-                </ContextMenuItem>
+                    <FolderPlus className="w-4 h-4" /> Create folder
+                  </ContextMenuItem>
                 )}
                 {openFolder && (
                   <ContextMenuItem
@@ -4046,8 +4171,8 @@ function ExperimentalDial({
                       setFolderDeleteDialog({ open: true, wsId: ws.id, folderId: openFolder.id, folderTitle: openFolder.title || 'Folder', deleteChildren: false })
                     }}
                   >
-                  <Trash2 className="w-4 h-4" /> Delete folder…
-                </ContextMenuItem>
+                    <Trash2 className="w-4 h-4" /> Delete folder…
+                  </ContextMenuItem>
                 )}
                 <ContextMenuItem
                   onSelect={() => {
@@ -4057,19 +4182,19 @@ function ExperimentalDial({
                       ? cell
                       : openFolder?.id
                         ? {
-                            wsId: ws.id,
-                            gx: 0,
-                            gy: 0,
-                            page: getActivePageForWorkspace(ws.id),
-                            folderId: openFolder.id,
-                            folderPage,
-                          }
+                          wsId: ws.id,
+                          gx: 0,
+                          gy: 0,
+                          page: getActivePageForWorkspace(ws.id),
+                          folderId: openFolder.id,
+                          folderPage,
+                        }
                         : {
-                            wsId: ws.id,
-                            gx: 0,
-                            gy: 0,
-                            page: getActivePageForWorkspace(ws.id),
-                          }
+                          wsId: ws.id,
+                          gx: 0,
+                          gy: 0,
+                          page: getActivePageForWorkspace(ws.id),
+                        }
                     setTimeout(() => startAddTile(target), 0)
                     gridContextCellRef.current = null
                   }}
@@ -4080,19 +4205,19 @@ function ExperimentalDial({
                       ? cell
                       : openFolder?.id
                         ? {
-                            wsId: ws.id,
-                            gx: 0,
-                            gy: 0,
-                            page: getActivePageForWorkspace(ws.id),
-                            folderId: openFolder.id,
-                            folderPage,
-                          }
+                          wsId: ws.id,
+                          gx: 0,
+                          gy: 0,
+                          page: getActivePageForWorkspace(ws.id),
+                          folderId: openFolder.id,
+                          folderPage,
+                        }
                         : {
-                            wsId: ws.id,
-                            gx: 0,
-                            gy: 0,
-                            page: getActivePageForWorkspace(ws.id),
-                          }
+                          wsId: ws.id,
+                          gx: 0,
+                          gy: 0,
+                          page: getActivePageForWorkspace(ws.id),
+                        }
                     setTimeout(() => startAddTile(target), 0)
                     gridContextCellRef.current = null
                   }}
@@ -4107,33 +4232,33 @@ function ExperimentalDial({
 
             {/* Optional internal tabs bar when rectangular + inside placement (hidden in Classic mode) */}
             {(settings?.speedDial?.tabsMode !== 'classic' && settings?.speedDial?.tabsShape === 'rect' && settings?.speedDial?.tabsPlacement === 'inside') && (
-        <div
-          className={`absolute ${swapTabsWithPageSwitcher ? 'left-3' : 'right-3'} flex items-end gap-2`}
-          style={{ zIndex: 5, bottom: 5, pointerEvents: openFolder ? 'none' : 'auto', filter: openFolder ? 'blur(3px) saturate(0.8)' : 'none', opacity: openFolder ? 0.7 : 1 }}
-          ref={tabsContainerRef}
-          data-role="workspace-tabs"
-        >
-            {workspaces.map((w, idx) => {
-              const Icon = iconByName(w.icon)
-              const isActive = w.id === activeWorkspaceId
-              const isOver = tabsDrag.dragging && tabsDrag.overIndex === idx
-              const shapeCls = settings?.speedDial?.tabsShape === 'rect' ? 'rounded-md' : 'rounded-b-lg'
-              const wsBtn = settings?.speedDial?.wsButtons || { background: true, shadow: true, blur: true, matchDialBlur: false }
-              const softSwitchGlow = applySoftSwitchGlow(settings, activeWorkspaceId, effectiveHardWorkspaceId, 'tab', w.id)
-              const tabPulse = tabTransientGlows[w.id] || ''
-              const isAnchored = anchoredWorkspaceId === w.id
-              const doubleClickGlowStyle = dcFlashColor ? `0 0 0 2px ${dcFlashColor}, 0 0 18px ${colorWithAlpha(dcFlashColor, 0.6)}` : ''
-              const blurEnabled = !!(wsBtn.blur ?? true)
-              const matchDialBlur = !!wsBtn.matchDialBlur
-              const dialBlurPx = Number.isFinite(Number(settings?.speedDial?.blurPx)) ? Math.max(0, Number(settings.speedDial.blurPx)) : 0
-              const activeTabBlur = blurEnabled && isActive ? `blur(${matchDialBlur ? dialBlurPx : 12}px)` : undefined
-              const tabBoxShadowParts = [
-                (isActive && wsBtn.shadow ? '0 0 14px rgba(0,0,0,0.25), 0 -2px 8px rgba(0,0,0,0.15)' : ''),
-                softSwitchGlow,
-                tabPulse,
-                doubleClickGlowStyle,
-              ].filter(Boolean).join(', ')
-              return (
+              <div
+                className={`absolute ${swapTabsWithPageSwitcher ? 'left-3' : 'right-3'} flex items-end gap-2`}
+                style={{ zIndex: 5, bottom: 5, pointerEvents: openFolder ? 'none' : 'auto', filter: openFolder ? 'blur(3px) saturate(0.8)' : 'none', opacity: openFolder ? 0.7 : 1 }}
+                ref={tabsContainerRef}
+                data-role="workspace-tabs"
+              >
+                {workspaces.map((w, idx) => {
+                  const Icon = iconByName(w.icon)
+                  const isActive = w.id === activeWorkspaceId
+                  const isOver = tabsDrag.dragging && tabsDrag.overIndex === idx
+                  const shapeCls = settings?.speedDial?.tabsShape === 'rect' ? 'rounded-md' : 'rounded-b-lg'
+                  const wsBtn = settings?.speedDial?.wsButtons || { background: true, shadow: true, blur: true, matchDialBlur: false }
+                  const softSwitchGlow = applySoftSwitchGlow(settings, activeWorkspaceId, effectiveHardWorkspaceId, 'tab', w.id)
+                  const tabPulse = tabTransientGlows[w.id] || ''
+                  const isAnchored = anchoredWorkspaceId === w.id
+                  const doubleClickGlowStyle = dcFlashColor ? `0 0 0 2px ${dcFlashColor}, 0 0 18px ${colorWithAlpha(dcFlashColor, 0.6)}` : ''
+                  const blurEnabled = !!(wsBtn.blur ?? true)
+                  const matchDialBlur = !!wsBtn.matchDialBlur
+                  const dialBlurPx = Number.isFinite(Number(settings?.speedDial?.blurPx)) ? Math.max(0, Number(settings.speedDial.blurPx)) : 0
+                  const activeTabBlur = blurEnabled && isActive ? `blur(${matchDialBlur ? dialBlurPx : 12}px)` : undefined
+                  const tabBoxShadowParts = [
+                    (isActive && wsBtn.shadow ? '0 0 14px rgba(0,0,0,0.25), 0 -2px 8px rgba(0,0,0,0.15)' : ''),
+                    softSwitchGlow,
+                    tabPulse,
+                    doubleClickGlowStyle,
+                  ].filter(Boolean).join(', ')
+                  return (
                     <ContextMenu key={w.id}>
                       <ContextMenuTrigger asChild>
                         <button
@@ -4141,12 +4266,12 @@ function ExperimentalDial({
                           onMouseEnter={() => { setHoveredTabId(w.id); onWorkspaceHoverChange?.(w.id) }}
                           onMouseLeave={() => { setHoveredTabId(null); onWorkspaceHoverChange?.(null) }}
                           onFocus={() => triggerTabFocusPulse(w.id)}
-                          onClick={() => { 
+                          onClick={() => {
                             // Handle soft switch glow behavior
                             const doubleClickEnabled = settings?.general?.autoUrlDoubleClick
                             const glowByUrl = settings?.speedDial?.glowByUrl
                             const softSwitchBehavior = settings?.speedDial?.softSwitchGlowBehavior || 'noGlow'
-                            
+
                             if (doubleClickEnabled && glowByUrl) {
                               // In soft switch mode, apply glow behavior
                               if (softSwitchBehavior === 'noGlow') {
@@ -4160,8 +4285,8 @@ function ExperimentalDial({
                                 // Speed Dial glow stays pinned to hard workspace
                               }
                             }
-                            
-                            onWorkspaceSelect?.(w.id) 
+
+                            onWorkspaceSelect?.(w.id)
                           }}
                           onDoubleClick={(e) => {
                             e?.preventDefault?.()
@@ -4178,13 +4303,11 @@ function ExperimentalDial({
                             }, 600)
                             onWorkspaceDoubleSelect?.(w.id)
                           }}
-                          className={`relative flex items-center justify-center ${shapeCls} ${
-                            isActive ? '-mt-px' : ''
-                          } ${
-                            isActive
+                          className={`relative flex items-center justify-center ${shapeCls} ${isActive ? '-mt-px' : ''
+                            } ${isActive
                               ? `${wsBtn.background ? 'bg-white/10' : 'bg-transparent'}`
                               : `${wsBtn.background ? 'bg-white/10 hover:bg-white/15' : 'bg-transparent'}`
-                          } ${isOver ? 'ring-2 ring-cyan-400/60' : ''} text-white/80`}
+                            } ${isOver ? 'ring-2 ring-cyan-400/60' : ''} text-white/80`}
                           style={{
                             width: TAB_W,
                             height: TAB_H,
@@ -4193,13 +4316,13 @@ function ExperimentalDial({
                             WebkitBackdropFilter: activeTabBlur,
                             filter: isActive ? 'brightness(1.1)' : undefined,
                             fontFamily: (settings?.speedDial?.matchHeaderFont && (bannerFontFamily || resolveFont)) ? (bannerFontFamily || resolveFont) : undefined,
-                    // Enhanced shadow and glow
-                    boxShadow: tabBoxShadowParts,
-                    backgroundColor: (settings?.speedDial?.tabHoverShade && hoveredTabId === w.id)
-                      ? hexToRgba(((anchoredWorkspaceId === w.id ? null : workspaceGlowColors[w.id]) || fallbackGlowColor), 0.18)
-                      : undefined,
-                    zIndex: isActive ? 10 : 1
-                  }}
+                            // Enhanced shadow and glow
+                            boxShadow: tabBoxShadowParts,
+                            backgroundColor: (settings?.speedDial?.tabHoverShade && hoveredTabId === w.id)
+                              ? hexToRgba(((anchoredWorkspaceId === w.id ? null : workspaceGlowColors[w.id]) || fallbackGlowColor), 0.18)
+                              : undefined,
+                            zIndex: isActive ? 10 : 1
+                          }}
                           title={isAnchored ? `${w.name} (Anchored)` : w.name}
                         >
                           {(() => {
@@ -4217,20 +4340,20 @@ function ExperimentalDial({
                         </button>
                       </ContextMenuTrigger>
                       <ContextMenuContent>
-                      <ContextMenuItem
-                        onClick={() => onWorkspaceAnchor?.(w.id)}
-                        className={isAnchored ? 'bg-white text-black font-semibold' : ''}
-                      >
-                        Anchor
-                      </ContextMenuItem>
-                      <ContextMenuItem onClick={() => setEditModeAndReorder(!(editMode || tabsReorderEnabled))}>
-                        <Edit3 className="w-4 h-4" /> {(editMode || tabsReorderEnabled) ? 'Disable Edit Mode' : 'Enable Edit Mode'}
-                      </ContextMenuItem>
-                      <ContextMenuItem onClick={() => onWorkspaceRename?.(w.id)}><Edit3 className="w-4 h-4" /> Rename</ContextMenuItem>
+                        <ContextMenuItem
+                          onClick={() => onWorkspaceAnchor?.(w.id)}
+                          className={isAnchored ? 'bg-white text-black font-semibold' : ''}
+                        >
+                          Anchor
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={() => setEditModeAndReorder(!(editMode || tabsReorderEnabled))}>
+                          <Edit3 className="w-4 h-4" /> {(editMode || tabsReorderEnabled) ? 'Disable Edit Mode' : 'Enable Edit Mode'}
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={() => onWorkspaceRename?.(w.id)}><Edit3 className="w-4 h-4" /> Rename</ContextMenuItem>
                         <ContextMenuSub>
                           <ContextMenuSubTrigger>Change Icon</ContextMenuSubTrigger>
                           <ContextMenuSubContent>
-                            {['Home','Layers','Grid2X2','AppWindow','LayoutList'].map(name => {
+                            {['Home', 'Layers', 'Grid2X2', 'AppWindow', 'LayoutList'].map(name => {
                               const Ico = iconByName(name)
                               return (
                                 <ContextMenuItem key={name} onClick={() => onWorkspaceChangeIcon?.(w.id, name)}>
@@ -4327,7 +4450,7 @@ function ExperimentalDial({
                       key={i}
                       onClick={() => setFolderPage(i)}
                       className={`w-2 h-2 rounded-full ${folderPage === i ? 'bg-white/90' : 'bg-white/40'}`}
-                      aria-label={`Go to page ${i+1}`}
+                      aria-label={`Go to page ${i + 1}`}
                     />
                   ))}
                 </div>
@@ -4392,10 +4515,10 @@ function ExperimentalDial({
             const isHovered = hoveredTabId === w.id
             const cyberTabDynamicVars = cyberTabsEnabled
               ? {
-                  '--cyber-tab-accent': colorWithAlpha(accentBase, 0.35),
-                  '--cyber-tab-accent-strong': colorWithAlpha(accentBase, 0.55),
-                  '--cyber-tab-outline': colorWithAlpha(accentBase, 0.24),
-                }
+                '--cyber-tab-accent': colorWithAlpha(accentBase, 0.35),
+                '--cyber-tab-accent-strong': colorWithAlpha(accentBase, 0.55),
+                '--cyber-tab-outline': colorWithAlpha(accentBase, 0.24),
+              }
               : {}
             const tabBackgroundClass = tightTabzEnabled
               ? 'bg-transparent'
@@ -4495,17 +4618,17 @@ function ExperimentalDial({
               : tightFamilyEnabled ? 'transparent' : undefined
             const tightTabVars = tightTabsEnabled
               ? {
-                  '--tight-basic-accent': colorWithAlpha(accentBase, isActive ? 0.32 : 0.16),
-                  '--tight-basic-soft': colorWithAlpha(accentBase, isActive ? 0.18 : 0.08),
-                  '--tight-basic-strength': isActive ? '1' : '0.45',
-                }
+                '--tight-basic-accent': colorWithAlpha(accentBase, isActive ? 0.32 : 0.16),
+                '--tight-basic-soft': colorWithAlpha(accentBase, isActive ? 0.18 : 0.08),
+                '--tight-basic-strength': isActive ? '1' : '0.45',
+              }
               : {}
             const tightTabzVars = tightTabzEnabled
               ? {
-                  '--tight-tabz-surface': colorWithAlpha(accentBase, isActive ? 0.55 : 0.22),
-                  '--tight-tabz-ambient': colorWithAlpha(accentBase, isActive ? 0.32 : 0.12),
-                  '--tight-tabz-outline': colorWithAlpha(accentBase, isActive ? 0.5 : 0.25)
-                }
+                '--tight-tabz-surface': colorWithAlpha(accentBase, isActive ? 0.55 : 0.22),
+                '--tight-tabz-ambient': colorWithAlpha(accentBase, isActive ? 0.32 : 0.12),
+                '--tight-tabz-outline': colorWithAlpha(accentBase, isActive ? 0.5 : 0.25)
+              }
               : {}
             const tightTabzBackground = tightTabzEnabled
               ? (isActive ? colorWithAlpha(accentBase, 0.24) : 'rgba(255,255,255,0.04)')
@@ -4587,7 +4710,7 @@ function ExperimentalDial({
                   <ContextMenuSub>
                     <ContextMenuSubTrigger>Change Icon</ContextMenuSubTrigger>
                     <ContextMenuSubContent>
-                      {['Home','Layers','Grid2X2','AppWindow','LayoutList'].map(name => {
+                      {['Home', 'Layers', 'Grid2X2', 'AppWindow', 'LayoutList'].map(name => {
                         const Ico = iconByName(name)
                         return (
                           <ContextMenuItem key={name} onClick={() => onWorkspaceChangeIcon?.(w.id, name)}>
@@ -4607,14 +4730,14 @@ function ExperimentalDial({
         </div>
       )}
 
-      
+
 
       {/* Glass connector removed for stability during redesign */}
 
       {/* Add Tile Dialog (active workspace) in portal to escape transforms */}
-  {createPortal(
-    <AnimatePresence>
-      {showAddDialog && (
+      {createPortal(
+        <AnimatePresence>
+          {showAddDialog && (
             <motion.div
               className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100000] settings-force-white"
               initial={{ opacity: 0 }}
@@ -4622,12 +4745,12 @@ function ExperimentalDial({
               exit={{ opacity: 0 }}
             >
               <motion.div
-              className="bg-black/90 backdrop-blur-md rounded-xl p-6 border border-white/20 max-w-md w-full mx-4 settings-force-white z-[100001]"
+                className="bg-black/90 backdrop-blur-md rounded-xl p-6 border border-white/20 max-w-md w-full mx-4 settings-force-white z-[100001]"
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
                 onClick={(e) => e.stopPropagation()}
-                style={{ 
+                style={{
                   color: '#fff',
                   fontFamily: 'Inter, system-ui, Arial, sans-serif' // Unchangeable font for Speed Dial popup
                 }}
@@ -4742,10 +4865,10 @@ function ExperimentalDial({
               </motion.div>
             </motion.div>
           )}
-    </AnimatePresence>,
-    document.body
-  )}
-      
+        </AnimatePresence>,
+        document.body
+      )}
+
       {/* Hidden input for editing existing tile icon */}
       <input
         ref={editIconRef}

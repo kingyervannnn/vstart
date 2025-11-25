@@ -161,17 +161,17 @@ const BackgroundManager = ({
                   const blob = await res.blob()
                   const file = new File([blob], item.name || 'background', { type: blob.type || 'image/*' })
                   await bgDB.saveBackgroundFile(file)
-                } catch {}
+                } catch { }
               }
             }
           }
           localStorage.setItem('vivaldi-migrated-backgrounds', '1')
           localStorage.removeItem('vivaldi-custom-backgrounds')
-        } catch {}
+        } catch { }
       }
 
       uploadedBackgroundsRef.current.forEach(bg => {
-        try { URL.revokeObjectURL(bg.url) } catch {}
+        try { URL.revokeObjectURL(bg.url) } catch { }
       })
 
       const list = await bgDB.listBackgrounds()
@@ -196,8 +196,8 @@ const BackgroundManager = ({
     const file = event.target.files[0]
     if (!file) return
 
-    if (!file.type.startsWith('image/')) {
-      alert('Please select a valid image file (JPG, PNG, GIF, WebP)')
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      alert('Please select a valid image or video file (JPG, PNG, GIF, WebP, MP4, WebM)')
       return
     }
 
@@ -212,7 +212,7 @@ const BackgroundManager = ({
       const record = await bgDB.saveBackgroundFile(file)
       const objectUrl = await bgDB.getBackgroundURLById(record.id)
       await loadBackgrounds()
-      applyBackground(objectUrl, { type: 'custom', id: record.id })
+      applyBackground(objectUrl, { type: 'custom', id: record.id, mime: record.type })
       setIsUploading(false)
     } catch (error) {
       console.error('Upload error:', error)
@@ -337,7 +337,7 @@ const BackgroundManager = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,video/mp4,video/webm"
           onChange={handleFileUpload}
           className="hidden"
         />
@@ -360,7 +360,7 @@ const BackgroundManager = ({
                 <div className="text-center">
                   <span className="text-white/80 font-medium">Click to upload background</span>
                   <p className="text-sm text-white/50 mt-1">
-                    Supports JPG, PNG, GIF, WebP (large files allowed)
+                    Supports JPG, PNG, GIF, WebP, MP4, WebM (large files allowed)
                   </p>
                 </div>
               </>
@@ -377,11 +377,10 @@ const BackgroundManager = ({
             return (
               <motion.div
                 key={bg.id}
-                className={`relative aspect-video rounded-lg overflow-hidden border-2 cursor-pointer ${
-                  selectedKey === key
-                    ? 'border-cyan-400 shadow-lg shadow-cyan-400/30'
-                    : 'border-white/20 hover:border-white/40'
-                }`}
+                className={`relative aspect-video rounded-lg overflow-hidden border-2 cursor-pointer ${selectedKey === key
+                  ? 'border-cyan-400 shadow-lg shadow-cyan-400/30'
+                  : 'border-white/20 hover:border-white/40'
+                  }`}
                 whileHover={{ scale: 1.05 }}
                 onClick={() => applyBackground(bg.dataUrl, bg.meta)}
                 onContextMenu={(e) => openContextMenu(e, { meta: bg.meta, url: bg.dataUrl })}
@@ -412,25 +411,35 @@ const BackgroundManager = ({
           <h3 className="text-lg font-medium text-white mb-4">Custom Backgrounds</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {uploadedBackgrounds.map((bg) => {
-              const meta = { type: 'custom', id: bg.id }
+              const meta = { type: 'custom', id: bg.id, mime: bg.type }
               const key = deriveSelectionKey(meta, bg.url)
               return (
                 <motion.div
                   key={bg.id}
-                  className={`relative aspect-video rounded-lg overflow-hidden border-2 cursor-pointer group ${
-                    selectedKey === key
-                      ? 'border-cyan-400 shadow-lg shadow-cyan-400/30'
-                      : 'border-white/20 hover:border-white/40'
-                  }`}
+                  className={`relative aspect-video rounded-lg overflow-hidden border-2 cursor-pointer group ${selectedKey === key
+                    ? 'border-cyan-400 shadow-lg shadow-cyan-400/30'
+                    : 'border-white/20 hover:border-white/40'
+                    }`}
                   whileHover={{ scale: 1.05 }}
                   onClick={() => applyBackground(bg.url, meta)}
                   onContextMenu={(e) => openContextMenu(e, { meta, url: bg.url })}
                 >
-                  <img
-                    src={bg.url}
-                    alt={bg.name}
-                    className="w-full h-full object-cover"
-                  />
+                  {bg.type.startsWith('video/') ? (
+                    <video
+                      src={bg.url}
+                      className="w-full h-full object-cover"
+                      muted
+                      loop
+                      onMouseOver={e => e.target.play()}
+                      onMouseOut={e => e.target.pause()}
+                    />
+                  ) : (
+                    <img
+                      src={bg.url}
+                      alt={bg.name}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
                   <div className="absolute inset-0 bg-black/40 flex items-end">
                     <div className="p-3 w-full">
                       <p className="text-white text-sm font-medium truncate">{bg.name}</p>
@@ -521,7 +530,7 @@ const BackgroundManager = ({
     loadBackgrounds()
     return () => {
       uploadedBackgroundsRef.current.forEach(bg => {
-        try { URL.revokeObjectURL(bg.url) } catch {}
+        try { URL.revokeObjectURL(bg.url) } catch { }
       })
     }
   }, [loadBackgrounds])

@@ -511,7 +511,18 @@ function App() {
       try {
         const saved = localStorage.getItem("iconThemingSettings");
         if (saved) {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          const defaults = {
+            enabled: false,
+            mode: 'grayscale', // 'grayscale' | 'tint' | 'monochrome' | 'grayscale_and_tint'
+            color: '#ff0000',
+            opacity: 0.5,
+            grayscaleIntensity: 1,
+            linkWorkspaceOpacity: false,
+            linkWorkspaceGrayscale: false,
+            workspaces: {},
+          };
+          return { ...defaults, ...parsed };
         }
       } catch { }
       return {
@@ -519,7 +530,10 @@ function App() {
         mode: 'grayscale', // 'grayscale' | 'tint' | 'monochrome' | 'grayscale_and_tint'
         color: '#ff0000',
         opacity: 0.5,
-        workspaces: {}, // { [workspaceId]: { mode, color, opacity } }
+        grayscaleIntensity: 1,
+        linkWorkspaceOpacity: false,
+        linkWorkspaceGrayscale: false,
+        workspaces: {}, // { [workspaceId]: { mode, color, opacity, grayscaleIntensity } }
       };
     })(),
     license: {
@@ -4771,6 +4785,24 @@ function App() {
           iconTheming: { ...(prev.iconTheming || {}), opacity: Number(val) },
         }))
       }
+      onChangeIconThemingGrayscaleIntensity={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: { ...(prev.iconTheming || {}), grayscaleIntensity: Number(val) },
+        }))
+      }
+      onToggleIconThemingLinkOpacity={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: { ...(prev.iconTheming || {}), linkWorkspaceOpacity: !!val },
+        }))
+      }
+      onToggleIconThemingLinkGrayscale={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: { ...(prev.iconTheming || {}), linkWorkspaceGrayscale: !!val },
+        }))
+      }
       onChangeWorkspaceIconThemeMode={(wsId, mode) =>
         setSettings((prev) => ({
           ...prev,
@@ -4781,6 +4813,21 @@ function App() {
               [wsId]: {
                 ...(prev.iconTheming.workspaces?.[wsId] || {}),
                 mode,
+              },
+            },
+          },
+        }))
+      }
+      onChangeWorkspaceIconThemeGrayscaleIntensity={(wsId, intensity) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: {
+            ...prev.iconTheming,
+            workspaces: {
+              ...(prev.iconTheming.workspaces || {}),
+              [wsId]: {
+                ...(prev.iconTheming.workspaces?.[wsId] || {}),
+                grayscaleIntensity: Number(intensity),
               },
             },
           },

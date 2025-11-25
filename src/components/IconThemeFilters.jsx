@@ -9,6 +9,7 @@ const IconThemeFilters = ({ settings, activeWorkspaceId, anchoredWorkspaceId }) 
             mode: settings?.iconTheming?.mode || 'grayscale',
             color: settings?.iconTheming?.color || '#00ffff',
             opacity: settings?.iconTheming?.opacity ?? 0.5,
+            grayscaleIntensity: settings?.iconTheming?.grayscaleIntensity ?? 1,
         };
 
         if (!activeWorkspaceId || activeWorkspaceId === 'default' || activeWorkspaceId === anchoredWorkspaceId) {
@@ -16,23 +17,20 @@ const IconThemeFilters = ({ settings, activeWorkspaceId, anchoredWorkspaceId }) 
         }
 
         const workspaceSettings = settings?.iconTheming?.workspaces?.[activeWorkspaceId];
-        if (!workspaceSettings) {
-            return globalSettings;
-        }
+        const linkOpacity = !!settings?.iconTheming?.linkWorkspaceOpacity;
+        const linkGrayscale = !!settings?.iconTheming?.linkWorkspaceGrayscale;
 
-        // Check if workspace has overrides (if mode is not 'default' or undefined)
-        if (workspaceSettings.mode && workspaceSettings.mode !== 'default') {
-            return {
-                mode: workspaceSettings.mode,
-                color: workspaceSettings.color || globalSettings.color,
-                opacity: workspaceSettings.opacity ?? globalSettings.opacity,
-            };
+        const result = { ...globalSettings };
+        if (workspaceSettings?.mode && workspaceSettings.mode !== 'default') {
+            result.mode = workspaceSettings.mode;
         }
-
-        return globalSettings;
+        result.color = workspaceSettings?.color || globalSettings.color;
+        result.opacity = linkOpacity ? globalSettings.opacity : (workspaceSettings?.opacity ?? globalSettings.opacity);
+        result.grayscaleIntensity = linkGrayscale ? globalSettings.grayscaleIntensity : (workspaceSettings?.grayscaleIntensity ?? globalSettings.grayscaleIntensity);
+        return result;
     }, [settings?.iconTheming, activeWorkspaceId, anchoredWorkspaceId]);
 
-    const { mode, color, opacity } = effectiveSettings;
+    const { mode, color, opacity, grayscaleIntensity } = effectiveSettings;
 
     const matrix = useMemo(() => {
         if (!enabled) return null;
@@ -56,13 +54,20 @@ const IconThemeFilters = ({ settings, activeWorkspaceId, anchoredWorkspaceId }) 
         const Lr = 0.2126;
         const Lg = 0.7152;
         const Lb = 0.0722;
+        const clamp01 = (v) => Math.max(0, Math.min(1, v));
+        const grayStrength = clamp01(grayscaleIntensity ?? 1);
+        const grayCoeffs = {
+            r: (Lr * grayStrength) + (1 - grayStrength),
+            g: Lg * grayStrength,
+            b: Lb * grayStrength,
+        };
 
         if (mode === 'grayscale') {
-            // Standard grayscale matrix
+            // Standard grayscale matrix with adjustable intensity
             return `
-        ${Lr} ${Lg} ${Lb} 0 0
-        ${Lr} ${Lg} ${Lb} 0 0
-        ${Lr} ${Lg} ${Lb} 0 0
+        ${grayCoeffs.r} ${grayCoeffs.g} ${grayCoeffs.b} 0 0
+        ${grayCoeffs.r} ${grayCoeffs.g} ${grayCoeffs.b} 0 0
+        ${grayCoeffs.r} ${grayCoeffs.g} ${grayCoeffs.b} 0 0
         0      0      0      1 0
       `;
         }
@@ -107,14 +112,27 @@ const IconThemeFilters = ({ settings, activeWorkspaceId, anchoredWorkspaceId }) 
             // G_in coeff: Lg * invA + Lg * r * a = Lg * (invA + r * a)
             // B_in coeff: Lb * invA + Lb * r * a = Lb * (invA + r * a)
 
-            const R_mix = invA + r * a;
-            const G_mix = invA + g * a;
-            const B_mix = invA + b * a;
+            const mixRow = (component) => {
+                const mono = {
+                    r: Lr * component,
+                    g: Lg * component,
+                    b: Lb * component,
+                };
+                return {
+                    r: (grayCoeffs.r * invA) + (mono.r * a),
+                    g: (grayCoeffs.g * invA) + (mono.g * a),
+                    b: (grayCoeffs.b * invA) + (mono.b * a),
+                };
+            };
+
+            const mixR = mixRow(r);
+            const mixG = mixRow(g);
+            const mixB = mixRow(b);
 
             return `
-        ${Lr * R_mix} ${Lg * R_mix} ${Lb * R_mix} 0 0
-        ${Lr * G_mix} ${Lg * G_mix} ${Lb * G_mix} 0 0
-        ${Lr * B_mix} ${Lg * B_mix} ${Lb * B_mix} 0 0
+        ${mixR.r} ${mixR.g} ${mixR.b} 0 0
+        ${mixG.r} ${mixG.g} ${mixG.b} 0 0
+        ${mixB.r} ${mixB.g} ${mixB.b} 0 0
         0 0 0 1 0
       `;
         }
@@ -139,7 +157,7 @@ const IconThemeFilters = ({ settings, activeWorkspaceId, anchoredWorkspaceId }) 
         }
 
         return null;
-    }, [enabled, mode, color, opacity]);
+    }, [enabled, mode, color, opacity, grayscaleIntensity]);
 
     if (!enabled) return null;
 

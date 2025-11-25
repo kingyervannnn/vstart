@@ -180,9 +180,13 @@ const SettingsButton = ({
   onSelectIconThemingMode,
   onChangeIconThemingColor,
   onChangeIconThemingOpacity,
+  onChangeIconThemingGrayscaleIntensity,
+  onToggleIconThemingLinkOpacity,
+  onToggleIconThemingLinkGrayscale,
   onChangeWorkspaceIconThemeMode,
   onChangeWorkspaceIconThemeColor,
   onChangeWorkspaceIconThemeOpacity,
+  onChangeWorkspaceIconThemeGrayscaleIntensity,
 }) => {
   const [showSettings, setShowSettings] = useState(false)
   const [aiModels, setAiModels] = useState([])
@@ -2758,7 +2762,17 @@ const SettingsButton = ({
                               </div>
                               <div>
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className="text-white/70 text-xs">Intensity</span>
+                                  <span className="text-white/70 text-xs flex items-center gap-2">
+                                    Intensity
+                                    <label className="inline-flex items-center gap-1 text-[10px] text-white/50">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!settings?.iconTheming?.linkWorkspaceOpacity}
+                                        onChange={(e) => onToggleIconThemingLinkOpacity?.(!!e.target.checked)}
+                                      />
+                                      <span>Link</span>
+                                    </label>
+                                  </span>
                                   <span className="text-white/50 text-[10px]">{Math.round((settings?.iconTheming?.opacity ?? 0.5) * 100)}%</span>
                                 </div>
                                 <input
@@ -2773,6 +2787,34 @@ const SettingsButton = ({
                               </div>
                             </>
                           )}
+
+                          {(settings?.iconTheming?.mode === 'grayscale' || settings?.iconTheming?.mode === 'grayscale_and_tint') && (
+                            <div className="pt-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-white/70 text-xs flex items-center gap-2">
+                                  Grayscale intensity
+                                  <label className="inline-flex items-center gap-1 text-[10px] text-white/50">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!settings?.iconTheming?.linkWorkspaceGrayscale}
+                                      onChange={(e) => onToggleIconThemingLinkGrayscale?.(!!e.target.checked)}
+                                    />
+                                    <span>Link</span>
+                                  </label>
+                                </span>
+                                <span className="text-white/50 text-[10px]">{Math.round((settings?.iconTheming?.grayscaleIntensity ?? 1) * 100)}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={settings?.iconTheming?.grayscaleIntensity ?? 1}
+                                onChange={(e) => onChangeIconThemingGrayscaleIntensity?.(parseFloat(e.target.value))}
+                                className="w-full"
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2785,8 +2827,16 @@ const SettingsButton = ({
                           const isAnchored = anchoredWorkspaceId === ws.id;
                           const wsSettings = settings?.iconTheming?.workspaces?.[ws.id] || {};
                           const wsMode = wsSettings.mode || 'default';
+                          const effectiveMode = wsMode === 'default' ? (settings?.iconTheming?.mode || 'grayscale') : wsMode;
+                          const linkOpacity = !!settings?.iconTheming?.linkWorkspaceOpacity;
+                          const linkGrayscale = !!settings?.iconTheming?.linkWorkspaceGrayscale;
                           const wsColor = wsSettings.color || settings?.iconTheming?.color || '#ff0000';
-                          const wsOpacity = wsSettings.opacity ?? settings?.iconTheming?.opacity ?? 0.5;
+                          const wsOpacity = linkOpacity
+                            ? settings?.iconTheming?.opacity ?? 0.5
+                            : wsSettings.opacity ?? 0.5;
+                          const wsGrayscale = linkGrayscale
+                            ? settings?.iconTheming?.grayscaleIntensity ?? 1
+                            : wsSettings.grayscaleIntensity ?? (settings?.iconTheming?.grayscaleIntensity ?? 1);
 
                           return (
                             <div key={ws.id} className={`p-2 bg-white/5 border border-white/10 rounded ${isAnchored ? 'opacity-40' : ''}`}>
@@ -2808,7 +2858,7 @@ const SettingsButton = ({
                                 </select>
                               </div>
 
-                              {(wsMode === 'tint' || wsMode === 'monochrome' || wsMode === 'grayscale_and_tint') && (
+                              {(effectiveMode === 'tint' || effectiveMode === 'monochrome' || effectiveMode === 'grayscale_and_tint') && (
                                 <>
                                   <div className="flex items-center justify-between mb-2">
                                     <span className="text-white/60 text-xs">Color</span>
@@ -2829,8 +2879,35 @@ const SettingsButton = ({
                                       value={wsOpacity}
                                       onChange={(e) => onChangeWorkspaceIconThemeOpacity?.(ws.id, parseFloat(e.target.value))}
                                       className="flex-1"
-                                      disabled={isAnchored || !settings?.iconTheming?.enabled}
+                                      disabled={isAnchored || !settings?.iconTheming?.enabled || linkOpacity}
                                     />
+                                    {linkOpacity && (
+                                      <span className="text-[10px] text-white/50">Linked</span>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+
+                              {(effectiveMode === 'grayscale' || effectiveMode === 'grayscale_and_tint') && (
+                                <>
+                                  <div className="flex items-center justify-between mt-3">
+                                    <span className="text-white/60 text-xs">Grayscale</span>
+                                    <span className="text-white/50 text-[10px]">{Math.round(wsGrayscale * 100)}%</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="1"
+                                      step="0.05"
+                                      value={wsGrayscale}
+                                      onChange={(e) => onChangeWorkspaceIconThemeGrayscaleIntensity?.(ws.id, parseFloat(e.target.value))}
+                                      className="flex-1"
+                                      disabled={isAnchored || !settings?.iconTheming?.enabled || linkGrayscale}
+                                    />
+                                    {linkGrayscale && (
+                                      <span className="text-[10px] text-white/50">Linked</span>
+                                    )}
                                   </div>
                                 </>
                               )}

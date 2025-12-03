@@ -365,16 +365,19 @@ const MusicController = ({ backendBase = '/music/api/v1', token = '', primaryCol
   const resolvedAccent = matchWorkspaceText ? musicCfg.resolvedAccentColor : undefined
   const baseColor = resolvedPrimary || primaryColor || '#ffffff'
   const accent = resolvedAccent || accentColor || '#00ffff'
+  // Use resolved glow color for glow shadows (workspace-specific or default for anchored workspace)
+  const glowColorForShadow = musicCfg.glowColor || styleConfig?.glowColor || '#00ffff66'
   const surfaceBg = toRgba(baseColor, 0.08)
   const borderColor = toRgba(baseColor, 0.28)
   const subText = toRgba(baseColor, 0.6)
   const accentSoft = toRgba(accent, 0.18)
-  const accentGlow = toRgba(accent, 0.35)
+  const accentGlow = toRgba(glowColorForShadow, 0.35)
 
   const musicBlurPx = Number.isFinite(Number(musicCfg.blurPx)) ? Number(musicCfg.blurPx) : 12
   const removeBg = !!musicCfg.removeBackground
   const removeOutline = !!musicCfg.removeOutline
   const useShadows = musicCfg.useShadows !== false
+  const glowShadow = musicCfg.glowShadow !== false
   const disableButtonBackgrounds = !!musicCfg.disableButtonBackgrounds
 
   const buttonBaseStyle = {
@@ -405,13 +408,14 @@ const MusicController = ({ backendBase = '/music/api/v1', token = '', primaryCol
 
   return (
     <div
-      className={`rounded-xl p-3 ${removeOutline ? '' : 'border'} ${useShadows ? 'shadow-2xl shadow-black/40' : ''}`}
+      className={`rounded-xl p-3 ${removeOutline ? '' : 'border'} ${(useShadows && !glowShadow) ? 'shadow-2xl shadow-black/40' : ''}`}
       style={{
         borderColor,
         backgroundColor: removeBg ? 'transparent' : surfaceBg,
         color: baseColor,
         backdropFilter: `blur(${musicBlurPx}px)`,
-        WebkitBackdropFilter: `blur(${musicBlurPx}px)`
+        WebkitBackdropFilter: `blur(${musicBlurPx}px)`,
+        boxShadow: glowShadow ? `0 22px 55px -35px ${accentGlow}` : undefined
       }}
     >
       {error ? (

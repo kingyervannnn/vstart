@@ -16,9 +16,9 @@ export async function trySaveIconToProject(dataUrl, suggestedName = 'icon') {
   const payload = { dataUrl, name: suggestedName }
   const candidates = [
     DEFAULT_ENDPOINT,
-    'http://localhost:3100/save',
-    'http://127.0.0.1:3100/save',
-    'http://host.docker.internal:3100/save',
+    'http://localhost:3100/save?type=icon',
+    'http://127.0.0.1:3100/save?type=icon',
+    'http://host.docker.internal:3100/save?type=icon',
   ]
   for (const url of candidates) {
     try {

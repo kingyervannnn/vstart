@@ -1,10 +1,12 @@
 import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Settings, X, Check } from 'lucide-react'
+import { Settings, X, Check, Mail, ChevronDown, ChevronUp } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs'
 import { FONT_PRESET_DEFINITIONS } from '../lib/theme-tokens'
 import BackgroundManager from './BackgroundManager'
 import ScrollToChangeWorkspaceSettings from './ScrollToChangeWorkspaceSettings'
+import GmailAuthModal from './GmailAuthModal'
 
 // Version from package.json - update this when releasing new versions
 const APP_VERSION = '2.1.0'
@@ -15,6 +17,7 @@ const SettingsButton = ({
   currentBackgroundMeta,
   workspaceBackgrounds = {},
   onWorkspaceBackgroundChange,
+  onDefaultWorkspaceBackgroundChange,
   workspaceBackgroundsEnabled = true,
   onToggleWorkspaceBackgroundsEnabled,
   backgroundFollowSlug = false,
@@ -23,7 +26,10 @@ const SettingsButton = ({
   onBackgroundModeChange,
   backgroundZoom = 1,
   onBackgroundZoomChange,
+  selectedWorkspaceForZoom = null,
+  onSelectWorkspaceForZoom,
   settings,
+  globalSpeedDialSettings = {},
   workspaces = [],
   widgetsSettings,
   appearanceWorkspaceOptions = [],
@@ -31,6 +37,15 @@ const SettingsButton = ({
   appearanceWorkspacesEnabled = false,
   onToggleAppearanceWorkspaces,
   onSelectAppearanceWorkspace,
+  workspaceThemingEnabled = false,
+  onToggleWorkspaceTheming,
+  workspaceThemingSelectedId = null,
+  onSelectWorkspaceTheming,
+  workspaceWidgetsEnabled = false,
+  onToggleWorkspaceWidgets,
+  workspaceWidgetsSelectedId = null,
+  onSelectWorkspaceWidgets,
+  activeWorkspaceId,
   onSettingsVisibilityChange,
   onToggleOpenInNewTab,
   onToggleScrollToChangeWorkspace,
@@ -39,6 +54,7 @@ const SettingsButton = ({
   onToggleScrollToChangeWorkspaceResistance,
   onChangeScrollToChangeWorkspaceResistanceIntensity,
   onToggleAnimatedOverlay,
+  onChangeAnimatedOverlaySpeed,
   onSelectMasterLayout,
   onToggleMirrorLayout,
   onToggleSwapClassicTabsWithPageSwitcher,
@@ -52,6 +68,7 @@ const SettingsButton = ({
   onChangeSearchBarBlurPx,
   onChangeSearchBarMaxGlow,
   onToggleSearchBarMatchSpeedDialMaxGlow,
+  onToggleSearchBarLinkSpeedDialBlur,
   onToggleSearchBarGlowByUrl,
   onToggleSearchBarGlowTransient,
   onToggleSearchBarInlineAiGlow,
@@ -72,10 +89,34 @@ const SettingsButton = ({
   onToggleUnits,
   onSelectClockPreset,
   onSelectWeatherPreset,
+  onToggleWeatherHoverDetails,
   onToggleEnableMusicPlayer,
   onToggleWidgetsRemoveOutlines,
   onToggleWidgetsRemoveBackgrounds,
   onToggleClockWeatherSeparator,
+  onToggleEnableNotes,
+  onToggleEnableClock,
+  onToggleEnableWeather,
+  onToggleEnableEmail,
+  onSelectNotesMode,
+
+  onToggleNotesLinkSpeedDialBlur,
+  onToggleNotesBlurEnabled,
+  onChangeNotesBlurPx,
+  onToggleNotesRemoveBackground,
+  onToggleNotesRemoveOutline,
+  onChangeSearchBarPushDirection,
+  onToggleNotesSimpleButtons,
+  onToggleNotesGlowShadow,
+  onToggleNotesAutoExpandOnHover,
+  onToggleNotesEnhancedWorkspaceId,
+  onToggleNotesDynamicBackground,
+  onToggleNotesHoverPreview,
+  onToggleNotesDynamicSizing,
+  emailAccounts = [],
+  onAddEmailAccount,
+  onRemoveEmailAccount,
+  onUpdateEmailAccountWorkspace,
   onChangeSubTimezones,
   onSelectFontPreset,
   onManualTextColorChange,
@@ -111,6 +152,7 @@ const SettingsButton = ({
   onChangeWorkspaceTextFont,
   onToggleWorkspaceTextByUrl,
   onChangeWorkspaceAccentColor,
+  onChangeWorkspaceBlurOverride,
   onSelectHeaderAlign,
   onSelectHeaderEffectMode,
   onToggleHeaderBannerColor,
@@ -173,7 +215,9 @@ const SettingsButton = ({
   onToggleMusicUseShadows,
   onToggleMusicMatchTextColor,
   onToggleMusicMatchSearchBarBlur,
+  onToggleMusicLinkSpeedDialBlur,
   onToggleMusicDisableButtonBackgrounds,
+  onToggleMusicGlowShadow,
   onChangeWidgetsVerticalOffset,
   // Icon Theming
   onToggleIconThemingEnabled,
@@ -183,12 +227,57 @@ const SettingsButton = ({
   onChangeIconThemingGrayscaleIntensity,
   onToggleIconThemingLinkOpacity,
   onToggleIconThemingLinkGrayscale,
+  onToggleIconThemingFollowSlug,
   onChangeWorkspaceIconThemeMode,
   onChangeWorkspaceIconThemeColor,
   onChangeWorkspaceIconThemeOpacity,
   onChangeWorkspaceIconThemeGrayscaleIntensity,
 }) => {
+  // Helper functions for keyboard shortcuts
+  const formatShortcut = (shortcut) => {
+    if (!shortcut) return ''
+    return shortcut.split(' ').map(key => {
+      const keyMap = {
+        ' ': 'Space',
+        'Meta': '⌘',
+        'Control': 'Ctrl',
+        'Alt': 'Alt',
+        'Shift': 'Shift'
+      }
+      return keyMap[key] || key.charAt(0).toUpperCase() + key.slice(1).toLowerCase()
+    }).join(' + ')
+  }
+
+  const captureShortcut = (e) => {
+    e.preventDefault()
+    const keys = []
+    if (e.metaKey) keys.push('Meta')
+    if (e.ctrlKey) keys.push('Control')
+    if (e.altKey) keys.push('Alt')
+    if (e.shiftKey) keys.push('Shift')
+
+    const key = e.key
+    if (key === ' ') {
+      keys.push(' ')
+    } else if (key.length === 1 && /[a-zA-Z0-9]/.test(key)) {
+      keys.push(key.toLowerCase())
+    } else if (key.startsWith('Arrow')) {
+      keys.push(key.replace('Arrow', ''))
+    } else if (key === 'Escape') {
+      keys.push('Escape')
+    } else if (key.length > 1) {
+      keys.push(key)
+    }
+
+    if (keys.length === 0) return null
+    return keys.join(' ')
+  }
+
   const [showSettings, setShowSettings] = useState(false)
+  const [activeTab, setActiveTab] = useState('general')
+  const [themingAdvancedOpen, setThemingAdvancedOpen] = useState(false)
+  const prevShowSettingsRef = useRef(false)
+  const [shortcutCaptureState, setShortcutCaptureState] = useState({ active: false, sequence: [] })
   const [aiModels, setAiModels] = useState([])
   const [aiModel, setAiModel] = useState('')
   const [provStatus, setProvStatus] = useState({ lmstudio: 'idle', openai: 'idle', openrouter: 'idle', openwebninja: 'idle' })
@@ -201,18 +290,85 @@ const SettingsButton = ({
   const [openrouterBaseDraft, setOpenrouterBaseDraft] = useState(settings?.ai?.openrouterBaseUrl ?? '')
   const [firecrawlBaseDraft, setFirecrawlBaseDraft] = useState(settings?.ai?.firecrawlBaseUrl ?? '')
   const [firecrawlKeyDraft, setFirecrawlKeyDraft] = useState(settings?.ai?.firecrawlApiKey ?? '')
+  const [newEmailAccount, setNewEmailAccount] = useState('')
+  const [newEmailWorkspaceId, setNewEmailWorkspaceId] = useState('')
+  const [showGmailAuthModal, setShowGmailAuthModal] = useState(false)
+  // Gmail OAuth Client ID state - initialize from localStorage or env
+  const [gmailClientIdState, setGmailClientIdState] = useState(() => {
+    try {
+      const stored = localStorage.getItem('gmailOAuthClientId')
+      if (stored && stored.trim()) return stored.trim()
+      // Check environment variable
+      if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GMAIL_CLIENT_ID) {
+        const envId = import.meta.env.VITE_GMAIL_CLIENT_ID
+        if (envId && envId.trim()) {
+          const trimmed = envId.trim()
+          // Auto-save to localStorage
+          try {
+            localStorage.setItem('gmailOAuthClientId', trimmed)
+            console.log('✅ Gmail Client ID initialized from .env.local on mount')
+          } catch {}
+          return trimmed
+        }
+        } else {
+          // Debug: check if import.meta is available
+          try {
+            if (typeof import.meta !== 'undefined') {
+              console.log('🔍 Env check - import.meta available, VITE_GMAIL_CLIENT_ID:', typeof import.meta.env?.VITE_GMAIL_CLIENT_ID !== 'undefined' ? 'EXISTS' : 'NOT FOUND')
+            } else {
+              console.log('⚠️ import.meta not available (SSR?)')
+            }
+          } catch {
+            console.log('⚠️ import.meta not available (SSR?)')
+          }
+        }
+      return ''
+    } catch {
+      return ''
+    }
+  })
   const [licenseKeyInput, setLicenseKeyInput] = useState('')
   const [licenseStatus, setLicenseStatus] = useState('')
   const [showPremiumReasons, setShowPremiumReasons] = useState(true)
   const [showSetupInstructions, setShowSetupInstructions] = useState(true)
   const [exportImportStatus, setExportImportStatus] = useState('')
   const importFileInputRef = useRef(null)
+  const gmailCredentialsFileInputRef = useRef(null)
+  const [gmailCredentialsUploadStatus, setGmailCredentialsUploadStatus] = useState('')
+  const [emailAccountContextMenu, setEmailAccountContextMenu] = useState(null) // { x, y, account }
+
+  // Debug: log menu state changes
+  useEffect(() => {
+    if (emailAccountContextMenu) {
+      console.log('🎯 Context menu opened:', emailAccountContextMenu.account?.email, 'at', emailAccountContextMenu.x, emailAccountContextMenu.y)
+    } else {
+      console.log('🔴 Context menu closed')
+    }
+  }, [emailAccountContextMenu])
 
   useEffect(() => {
     if (typeof onSettingsVisibilityChange === 'function') {
       onSettingsVisibilityChange(showSettings)
     }
-  }, [showSettings, onSettingsVisibilityChange])
+    
+    // When settings opens, sync workspace selection to active workspace
+    if (showSettings && !prevShowSettingsRef.current) {
+      if (appearanceWorkspacesEnabled && activeWorkspaceId && onSelectAppearanceWorkspace) {
+        // Check if the active workspace exists in the options
+        const workspaceExists = appearanceWorkspaceOptions.some(opt => opt.id === activeWorkspaceId);
+        if (workspaceExists) {
+          onSelectAppearanceWorkspace(activeWorkspaceId);
+        }
+      } else if (workspaceBackgroundsEnabled && !appearanceWorkspacesEnabled && activeWorkspaceId && onSelectWorkspaceForZoom) {
+        // For workspace backgrounds only, sync to active workspace
+        onSelectWorkspaceForZoom(activeWorkspaceId);
+      } else if (workspaceThemingEnabled && activeWorkspaceId && onSelectWorkspaceTheming) {
+        // For workspace theming, sync to active workspace
+        onSelectWorkspaceTheming(activeWorkspaceId);
+      }
+    }
+    prevShowSettingsRef.current = showSettings;
+  }, [showSettings, onSettingsVisibilityChange, appearanceWorkspacesEnabled, workspaceBackgroundsEnabled, workspaceThemingEnabled, activeWorkspaceId, onSelectAppearanceWorkspace, onSelectWorkspaceForZoom, onSelectWorkspaceTheming, appearanceWorkspaceOptions])
 
   useEffect(() => { setLmstudioBaseDraft(settings?.ai?.lmstudioBaseUrl ?? '') }, [settings?.ai?.lmstudioBaseUrl])
   useEffect(() => { setOpenaiKeyDraft(settings?.ai?.openaiApiKey ?? '') }, [settings?.ai?.openaiApiKey])
@@ -220,6 +376,138 @@ const SettingsButton = ({
   useEffect(() => { setOpenrouterBaseDraft(settings?.ai?.openrouterBaseUrl ?? '') }, [settings?.ai?.openrouterBaseUrl])
   useEffect(() => { setFirecrawlBaseDraft(settings?.ai?.firecrawlBaseUrl ?? '') }, [settings?.ai?.firecrawlBaseUrl])
   useEffect(() => { setFirecrawlKeyDraft(settings?.ai?.firecrawlApiKey ?? '') }, [settings?.ai?.firecrawlApiKey])
+
+  // Listen for OAuth callback messages when button opens OAuth directly
+  useEffect(() => {
+    const handleOAuthMessage = async (event) => {
+      // Security: verify origin
+      if (event.origin !== window.location.origin) {
+        return
+      }
+
+      if (event.data.type === 'gmail_oauth_success') {
+        const { code, state: receivedState } = event.data
+        
+        console.log('✅ OAuth callback received! Code:', code.substring(0, 20) + '...')
+
+        // Verify state
+        const storedState = localStorage.getItem('gmail_oauth_state')
+        if (storedState !== receivedState) {
+          console.error('❌ OAuth state mismatch. Stored:', storedState, 'Received:', receivedState)
+          alert('Security check failed. Please try signing in again.')
+          return
+        }
+
+        localStorage.removeItem('gmail_oauth_state')
+        console.log('🔐 State verified successfully')
+
+        // Exchange code for tokens via backend
+        try {
+          // Use Vite proxy for backend (empty base means use relative path which goes through proxy)
+          const backendBase = (() => {
+            try {
+              const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {}
+              const base = env.VITE_GMAIL_API_BASE_URL || env.VITE_API_BASE_URL || ''
+              return String(base || '').replace(/\/+$/, '')
+            } catch {
+              return ''
+            }
+          })()
+          // If no base URL, use relative path (goes through Vite proxy to :3500)
+          const endpoint = backendBase ? `${backendBase}/gmail/oauth/token` : '/gmail/oauth/token'
+          console.log('🔗 Token exchange endpoint:', endpoint)
+          console.log('🌐 Current origin:', window.location.origin)
+          const redirectUri = `${window.location.origin}/gmail-oauth-callback`
+          console.log('🔗 Redirect URI:', redirectUri)
+
+          console.log('📤 Exchanging OAuth code for tokens...')
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, redirectUri }),
+          })
+          
+          console.log('📥 Response status:', response.status, response.statusText)
+
+          if (response.ok) {
+            const data = await response.json()
+            console.log('✅ Token exchange successful:', data.email)
+            const accountData = {
+              email: data.email,
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token,
+              workspaceId: null, // Can be set later in settings
+              authenticated: true,
+              authenticatedAt: Date.now(),
+            }
+            console.log('📧 Adding account to list:', accountData)
+            onAddEmailAccount?.(accountData)
+            console.log('✅ Gmail account added successfully!')
+            // Show success notification
+            alert(`Successfully added Gmail account: ${data.email}\n\nYou can now associate it with a workspace in the settings.`)
+          } else {
+            const errorText = await response.text()
+            console.error('❌ Failed to exchange OAuth code:', response.status, errorText)
+            alert(`Failed to complete authentication:\n\n${errorText}\n\nMake sure your Gmail backend server is running on port 3500.`)
+          }
+        } catch (err) {
+          console.error('❌ OAuth token exchange error:', err)
+          alert(`Authentication error: ${err.message}\n\nMake sure your Gmail backend server is running.`)
+        }
+      }
+
+      if (event.data.type === 'gmail_oauth_error') {
+        console.error('Gmail OAuth error:', event.data.error)
+      }
+    }
+
+    window.addEventListener('message', handleOAuthMessage)
+    return () => {
+      window.removeEventListener('message', handleOAuthMessage)
+    }
+  }, [onAddEmailAccount])
+
+  // Initialize Gmail OAuth Client ID from environment if available and not already set
+  useEffect(() => {
+    // Run once on mount to sync env variable to state
+    const syncClientIdFromEnv = () => {
+      try {
+        // Check environment variable first
+        if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GMAIL_CLIENT_ID) {
+          const envClientId = import.meta.env.VITE_GMAIL_CLIENT_ID
+          if (envClientId && envClientId.trim()) {
+            const trimmed = envClientId.trim()
+            // Always update localStorage with env value
+            localStorage.setItem('gmailOAuthClientId', trimmed)
+            // Update state if it's different or empty
+            setGmailClientIdState(prev => {
+              if (prev !== trimmed) {
+                console.log('✅ Gmail Client ID loaded from .env.local:', trimmed.substring(0, 30) + '...')
+                return trimmed
+              }
+              return prev
+            })
+            return
+          }
+        }
+        
+        // If no env var, check if state is empty and load from localStorage
+        setGmailClientIdState(prev => {
+          if (!prev || !prev.trim()) {
+            const stored = localStorage.getItem('gmailOAuthClientId')
+            if (stored && stored.trim()) {
+              return stored.trim()
+            }
+          }
+          return prev
+        })
+      } catch (err) {
+        console.error('Error syncing Gmail Client ID:', err)
+      }
+    }
+    
+    syncClientIdFromEnv()
+  }, []) // Run only once on mount
 
   // Persist AI drafts proactively so they survive reloads without blur
   useEffect(() => {
@@ -418,6 +706,71 @@ const SettingsButton = ({
     setTimeout(() => { try { el.scrollTop = top } catch { } }, 60)
   }
 
+  // Prevent toggle-related scroll jumps on touch devices
+  // Store scroll position before focus to restore it after
+  const toggleScrollRef = useRef({ container: null, scrollTop: 0 })
+
+  // Prevent focus from causing scroll on toggle inputs - more aggressive approach
+  const handleToggleFocus = (e) => {
+    const input = e.target
+    if (input && input.type === 'checkbox') {
+      // Find the scrollable container (settings content area)
+      const scrollContainer = input.closest('[class*="overflow-y-auto"]')
+      if (scrollContainer) {
+        // Store current scroll position immediately
+        const savedScrollTop = scrollContainer.scrollTop
+        toggleScrollRef.current = {
+          container: scrollContainer,
+          scrollTop: savedScrollTop
+        }
+        
+        // Prevent scroll by restoring position multiple times to catch all scroll attempts
+        const restoreScroll = () => {
+          try {
+            if (toggleScrollRef.current.container) {
+              toggleScrollRef.current.container.scrollTop = toggleScrollRef.current.scrollTop
+            }
+          } catch {}
+        }
+        
+        // Restore immediately and multiple times to catch browser scroll attempts
+        restoreScroll()
+        requestAnimationFrame(restoreScroll)
+        requestAnimationFrame(() => requestAnimationFrame(restoreScroll))
+        setTimeout(restoreScroll, 0)
+        setTimeout(restoreScroll, 10)
+        setTimeout(restoreScroll, 30)
+        setTimeout(() => {
+          restoreScroll()
+          // Blur after a short delay to prevent further scroll issues
+          try { input.blur() } catch {}
+        }, 50)
+      }
+    }
+  }
+
+  // Handle toggle touch to prevent scroll on mobile
+  const handleToggleTouchStart = (e) => {
+    // Prevent scroll when touching toggle
+    const label = e.currentTarget
+    const scrollContainer = label.closest('[class*="overflow-y-auto"]')
+    if (scrollContainer) {
+      // Store scroll position
+      const savedScrollTop = scrollContainer.scrollTop
+      // Restore scroll position after touch
+      const restoreScroll = () => {
+        try {
+          scrollContainer.scrollTop = savedScrollTop
+        } catch {}
+      }
+      // Restore multiple times to catch scroll attempts
+      setTimeout(restoreScroll, 0)
+      setTimeout(restoreScroll, 10)
+      setTimeout(restoreScroll, 30)
+      setTimeout(restoreScroll, 50)
+    }
+  }
+
   useEffect(() => {
     if (typeof document === 'undefined') return
     const body = document.body
@@ -598,9 +951,13 @@ const SettingsButton = ({
                 </button>
               </div>
 
-              <Tabs defaultValue="general" className="mt-2">
+              <Tabs defaultValue="general" value={activeTab} onValueChange={setActiveTab} className="mt-2">
                 {/* Force white text throughout settings */}
                 <style>{`
+                  @keyframes shimmer {
+                    0% { background-position: -200% 0; }
+                    100% { background-position: 200% 0; }
+                  }
                   .settings-force-white,
                   .settings-force-white * {
                     color: #fff !important;
@@ -617,6 +974,199 @@ const SettingsButton = ({
                   <TabsTrigger value="about" className={tabsTriggerClass}>About</TabsTrigger>
                 </TabsList>
 
+                {/* Workspace selection buttons - shown for appearance workspaces OR workspace theming OR workspace widgets OR backgrounds */}
+                {((appearanceWorkspacesEnabled && !['general', 'about', 'theming', 'widgets', 'backgrounds'].includes(activeTab)) || 
+                  (workspaceThemingEnabled && activeTab === 'theming') ||
+                  (workspaceWidgetsEnabled && activeTab === 'widgets') ||
+                  (workspaceBackgroundsEnabled && activeTab === 'backgrounds')) && (
+                  <div className={`mt-3 mb-2 flex flex-wrap gap-2 ${
+                    activeTab === 'backgrounds' && !workspaceBackgroundsEnabled
+                      ? 'opacity-40 pointer-events-none' 
+                      : ''
+                  }`}>
+                    {workspaceThemingEnabled && activeTab === 'theming' ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onSelectWorkspaceTheming?.(null)}
+                          className={`px-3 py-1.5 text-xs rounded-md border transition-all relative overflow-hidden ${
+                            workspaceThemingSelectedId === null
+                              ? 'bg-gradient-to-r from-cyan-500/30 via-purple-500/25 to-fuchsia-500/30 border-cyan-300/60 text-white font-semibold shadow-lg shadow-cyan-500/20'
+                              : 'bg-gradient-to-r from-white/10 to-white/5 border-white/20 text-white/70 hover:text-white hover:border-white/30 hover:from-white/15 hover:to-white/10'
+                          }`}
+                          style={workspaceThemingSelectedId === null ? {
+                            boxShadow: '0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(168, 85, 247, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                          } : {}}
+                        >
+                          {workspaceThemingSelectedId === null && (
+                            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" style={{
+                              animation: 'shimmer 3s infinite',
+                              backgroundSize: '200% 100%'
+                            }} />
+                          )}
+                          <span className="relative z-10">Master Override</span>
+                        </button>
+                        {workspaces.map((ws) => (
+                          <button
+                            key={ws.id}
+                            type="button"
+                            onClick={() => onSelectWorkspaceTheming?.(ws.id)}
+                            className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                              workspaceThemingSelectedId === ws.id
+                                ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                            }`}
+                          >
+                            {ws.name || 'Workspace'}
+                          </button>
+                        ))}
+                      </>
+                    ) : workspaceWidgetsEnabled && activeTab === 'widgets' ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onSelectWorkspaceWidgets?.(null)}
+                          className={`px-3 py-1.5 text-xs rounded-md border transition-all relative overflow-hidden ${
+                            workspaceWidgetsSelectedId === null
+                              ? 'bg-gradient-to-r from-cyan-500/30 via-purple-500/25 to-fuchsia-500/30 border-cyan-300/60 text-white font-semibold shadow-lg shadow-cyan-500/20'
+                              : 'bg-gradient-to-r from-white/10 to-white/5 border-white/20 text-white/70 hover:text-white hover:border-white/30 hover:from-white/15 hover:to-white/10'
+                          }`}
+                          style={workspaceWidgetsSelectedId === null ? {
+                            boxShadow: '0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(168, 85, 247, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                          } : {}}
+                        >
+                          {workspaceWidgetsSelectedId === null && (
+                            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" style={{
+                              animation: 'shimmer 3s infinite',
+                              backgroundSize: '200% 100%'
+                            }} />
+                          )}
+                          <span className="relative z-10">Master Override</span>
+                        </button>
+                        {workspaces.map((ws) => (
+                          <button
+                            key={ws.id}
+                            type="button"
+                            onClick={() => onSelectWorkspaceWidgets?.(ws.id)}
+                            className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                              workspaceWidgetsSelectedId === ws.id
+                                ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                            }`}
+                          >
+                            {ws.name || 'Workspace'}
+                          </button>
+                        ))}
+                      </>
+                    ) : workspaceBackgroundsEnabled && activeTab === 'backgrounds' ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onSelectWorkspaceForZoom?.(null)}
+                          className={`px-3 py-1.5 text-xs rounded-md border transition-all relative overflow-hidden ${
+                            !selectedWorkspaceForZoom
+                              ? 'bg-gradient-to-r from-cyan-500/30 via-purple-500/25 to-fuchsia-500/30 border-cyan-300/60 text-white font-semibold shadow-lg shadow-cyan-500/20'
+                              : 'bg-gradient-to-r from-white/10 to-white/5 border-white/20 text-white/70 hover:text-white hover:border-white/30 hover:from-white/15 hover:to-white/10'
+                          }`}
+                          style={!selectedWorkspaceForZoom ? {
+                            boxShadow: '0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(168, 85, 247, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                          } : {}}
+                        >
+                          {!selectedWorkspaceForZoom && (
+                            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" style={{
+                              animation: 'shimmer 3s infinite',
+                              backgroundSize: '200% 100%'
+                            }} />
+                          )}
+                          <span className="relative z-10">Master Override</span>
+                        </button>
+                        {workspaces.map((ws) => (
+                          <button
+                            key={ws.id}
+                            type="button"
+                            onClick={() => onSelectWorkspaceForZoom?.(ws.id)}
+                            className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                              selectedWorkspaceForZoom === ws.id
+                                ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                            }`}
+                          >
+                            {ws.name || 'Workspace'}
+                          </button>
+                        ))}
+                      </>
+                    ) : (
+                      (appearanceWorkspaceOptions || []).map((opt) => {
+                        const isActive = appearanceWorkspaceActiveId === opt.id;
+                        const isMaster = opt.id === 'master';
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => onSelectAppearanceWorkspace?.(opt.id)}
+                            className={`px-3 py-1.5 text-xs rounded-md border transition-all relative overflow-hidden ${
+                              isActive && isMaster
+                                ? 'bg-gradient-to-r from-cyan-500/30 via-purple-500/25 to-fuchsia-500/30 border-cyan-300/60 text-white font-semibold shadow-lg shadow-cyan-500/20'
+                                : isActive
+                                ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                                : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                            }`}
+                            style={isActive && isMaster ? {
+                              boxShadow: '0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(168, 85, 247, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                            } : {}}
+                          >
+                            {isActive && isMaster && (
+                              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" style={{
+                                animation: 'shimmer 3s infinite',
+                                backgroundSize: '200% 100%'
+                              }} />
+                            )}
+                            <span className="relative z-10">{opt.label}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+                {workspaceBackgroundsEnabled && !appearanceWorkspacesEnabled && activeTab === 'backgrounds' && (
+                  <div className="mt-3 mb-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectWorkspaceForZoom?.(null)}
+                      className={`px-3 py-1.5 text-xs rounded-md border transition-all relative overflow-hidden ${
+                        !selectedWorkspaceForZoom
+                          ? 'bg-gradient-to-r from-cyan-500/30 via-purple-500/25 to-fuchsia-500/30 border-cyan-300/60 text-white font-semibold shadow-lg shadow-cyan-500/20'
+                          : 'bg-gradient-to-r from-white/10 to-white/5 border-white/20 text-white/70 hover:text-white hover:border-white/30 hover:from-white/15 hover:to-white/10'
+                      }`}
+                      style={!selectedWorkspaceForZoom ? {
+                        boxShadow: '0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(168, 85, 247, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                      } : {}}
+                    >
+                      {!selectedWorkspaceForZoom && (
+                        <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" style={{
+                          animation: 'shimmer 3s infinite',
+                          backgroundSize: '200% 100%'
+                        }} />
+                      )}
+                      <span className="relative z-10">Master Override</span>
+                    </button>
+                    {workspaces.map((ws) => (
+                      <button
+                        key={ws.id}
+                        type="button"
+                        onClick={() => onSelectWorkspaceForZoom?.(ws.id)}
+                        className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                          selectedWorkspaceForZoom === ws.id
+                            ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                            : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
+                        }`}
+                      >
+                        {ws.name || 'Workspace'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <TabsContent
                   value="general"
                   className="mt-4 max-h-[70vh] overflow-y-auto no-scrollbar pr-2"
@@ -630,11 +1180,16 @@ const SettingsButton = ({
                         <div className="text-white text-sm font-medium">Links open in new tab</div>
                         <div className="text-white/60 text-xs">When enabled, shortcuts and search results open in a new tab. When off, they replace the current page.</div>
                       </div>
-                      <label className="inline-flex items-center cursor-pointer select-none">
+                      <label 
+                        className="inline-flex items-center cursor-pointer select-none"
+                        style={{ touchAction: 'manipulation' }}
+                        onTouchStart={handleToggleTouchStart}
+                      >
                         <input
                           type="checkbox"
                           checked={!!(settings?.general?.openInNewTab)}
                           onChange={(e) => onToggleOpenInNewTab?.(e.target.checked)}
+                          onFocus={handleToggleFocus}
                           className="peer absolute opacity-0 w-0 h-0"
                         />
                         <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
@@ -713,17 +1268,102 @@ const SettingsButton = ({
                         <div className="text-white text-sm font-medium">Cap at 7 suggestions</div>
                         <div className="text-white/60 text-xs">Limit suggestions to a concise top 7; most relevant sits at the bottom.</div>
                       </div>
-                      <label className="inline-flex items-center cursor-pointer select-none">
+                      <label 
+                        className="inline-flex items-center cursor-pointer select-none"
+                        style={{ touchAction: 'manipulation' }}
+                        onTouchStart={handleToggleTouchStart}
+                      >
                         <input
                           type="checkbox"
                           checked={!!(settings?.general?.capSuggestions7)}
                           onChange={(e) => window.dispatchEvent(new CustomEvent('app-toggle-suggestions-cap7', { detail: !!e.target.checked }))}
+                          onFocus={handleToggleFocus}
                           className="peer absolute opacity-0 w-0 h-0"
                         />
                         <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
                           <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
                         </div>
                       </label>
+                    </div>
+                    {/* Keyboard Shortcuts */}
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
+                      <div>
+                        <div className="text-white text-sm font-medium">Keyboard Shortcuts</div>
+                        <div className="text-white/60 text-xs">Configure keyboard shortcuts for various functions.</div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-white/80 text-xs">Focus searchbar</div>
+                            <div className="text-white/50 text-[10px]">Shortcut to focus the search input</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              readOnly
+                              value={shortcutCaptureState.active
+                                ? (shortcutCaptureState.sequence.length > 0
+                                  ? formatShortcut(shortcutCaptureState.sequence.join(' '))
+                                  : 'Press keys...')
+                                : formatShortcut(settings?.general?.shortcuts?.focusSearchbar || 'x Space')}
+                              onFocus={() => {
+                                setShortcutCaptureState({ active: true, sequence: [] })
+                              }}
+                              onBlur={() => {
+                                if (shortcutCaptureState.sequence.length > 0) {
+                                  const shortcut = shortcutCaptureState.sequence.join(' ')
+                                  window.dispatchEvent(new CustomEvent('app-shortcut-update', {
+                                    detail: { action: 'focusSearchbar', shortcut }
+                                  }))
+                                }
+                                setShortcutCaptureState({ active: false, sequence: [] })
+                              }}
+                              onKeyDown={(e) => {
+                                if (!shortcutCaptureState.active) return
+                                e.preventDefault()
+                                e.stopPropagation()
+
+                                const key = e.key
+                                let keyStr = null
+
+                                if (key === ' ') {
+                                  keyStr = ' '
+                                } else if (key.length === 1 && /[a-zA-Z0-9]/.test(key)) {
+                                  keyStr = key.toLowerCase()
+                                } else if (key.startsWith('Arrow')) {
+                                  keyStr = key.replace('Arrow', '')
+                                } else if (key === 'Escape') {
+                                  setShortcutCaptureState({ active: false, sequence: [] })
+                                  return
+                                } else if (key.length > 1 && !['Meta', 'Control', 'Alt', 'Shift'].includes(key)) {
+                                  keyStr = key
+                                }
+
+                                // Don't add modifier keys alone, but allow them with other keys
+                                if (keyStr && !['Meta', 'Control', 'Alt', 'Shift'].includes(keyStr)) {
+                                  setShortcutCaptureState(prev => ({
+                                    ...prev,
+                                    sequence: [...prev.sequence, keyStr]
+                                  }))
+                                }
+                              }}
+                              placeholder="Press keys..."
+                              className="w-32 bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-2 py-1 focus:outline-none focus:border-cyan-500/60 cursor-text"
+                            />
+                            <button
+                              onClick={() => {
+                                window.dispatchEvent(new CustomEvent('app-shortcut-update', {
+                                  detail: { action: 'focusSearchbar', shortcut: 'x Space' }
+                                }))
+                              }}
+                              className="text-white/60 hover:text-white text-xs px-2 py-1 rounded border border-white/20 hover:border-white/40"
+                              title="Reset to default"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <ScrollToChangeWorkspaceSettings
                       settings={settings}
@@ -740,7 +1380,11 @@ const SettingsButton = ({
                         </div>
                         <div className="text-white/60 text-xs">Controls whether inline Firecrawl uses AI; button remains visible but disabled when off.</div>
                       </div>
-                      <label className="inline-flex items-center cursor-pointer select-none">
+                      <label 
+                        className="inline-flex items-center cursor-pointer select-none"
+                        style={{ touchAction: 'manipulation' }}
+                        onTouchStart={handleToggleTouchStart}
+                      >
                         <input
                           type="checkbox"
                           checked={settings?.search?.inlineEnabled !== false}
@@ -763,7 +1407,11 @@ const SettingsButton = ({
                         <div className="flex items-center justify-between">
                           <div className="text-white/80 text-xs">Use same Firecrawl settings as AI</div>
                         </div>
-                        <label className="inline-flex items-center cursor-pointer select-none">
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
                           <input
                             type="checkbox"
                             checked={settings?.search?.inlineUseAI !== false}
@@ -773,6 +1421,7 @@ const SettingsButton = ({
                               window.dispatchEvent(new CustomEvent('app-inline-use-ai', { detail: val }))
                             }}
                             className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
                           />
                           <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
                             <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
@@ -850,7 +1499,11 @@ const SettingsButton = ({
                             Used when Inline search provider is set to Custom. Endpoint must accept a <code>q</code> parameter and return JSON results.
                           </div>
                         </div>
-                        <label className="inline-flex items-center cursor-pointer select-none">
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
                           <input
                             type="checkbox"
                             checked={settings?.search?.inlineEnabled !== false}
@@ -859,6 +1512,7 @@ const SettingsButton = ({
                               try { localStorage.setItem('searchSettings', JSON.stringify({ ...(settings?.search || {}), inlineEnabled: detail })) } catch { }
                               try { window.dispatchEvent(new CustomEvent('app-inline-enabled', { detail })) } catch { }
                             }}
+                            onFocus={handleToggleFocus}
                             className="peer absolute opacity-0 w-0 h-0"
 
                           />
@@ -1062,7 +1716,11 @@ const SettingsButton = ({
                             <div className="text-white/80 text-xs">Enable AI features</div>
                             <div className="text-white/60 text-[11px]">Controls AI chat and inline AI usage.</div>
                           </div>
-                          <label className="inline-flex items-center cursor-pointer select-none">
+                          <label 
+                            className="inline-flex items-center cursor-pointer select-none"
+                            style={{ touchAction: 'manipulation' }}
+                            onTouchStart={handleToggleTouchStart}
+                          >
                             <input
                               type="checkbox"
                               checked={settings?.ai?.enabled !== false}
@@ -1071,6 +1729,7 @@ const SettingsButton = ({
                                 try { localStorage.setItem('aiSettings', JSON.stringify({ ...(settings?.ai || {}), enabled: detail })) } catch { }
                                 try { window.dispatchEvent(new CustomEvent('app-ai-enabled', { detail })) } catch { }
                               }}
+                              onFocus={handleToggleFocus}
                               className="peer absolute opacity-0 w-0 h-0"
 
                             />
@@ -1084,7 +1743,11 @@ const SettingsButton = ({
                             <div className="text-white/80 text-xs">Open a new chat every time</div>
                             <div className="text-white/60 text-[11px]">When enabled, AI mode always starts a fresh chat instead of reopening the last one.</div>
                           </div>
-                          <label className="inline-flex items-center cursor-pointer select-none">
+                          <label 
+                            className="inline-flex items-center cursor-pointer select-none"
+                            style={{ touchAction: 'manipulation' }}
+                            onTouchStart={handleToggleTouchStart}
+                          >
                             <input
                               type="checkbox"
                               checked={!!settings?.ai?.openNewChatEverytime}
@@ -1093,9 +1756,10 @@ const SettingsButton = ({
                                 try { localStorage.setItem('aiSettings', JSON.stringify({ ...(settings?.ai || {}), openNewChatEverytime: detail })) } catch { }
                                 try { window.dispatchEvent(new CustomEvent('app-ai-open-new-chat-everytime', { detail })) } catch { }
                               }}
-                              className="peer absolute opacity-0 w-0 h-0"
-                            />
-                            <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                                  className="peer absolute opacity-0 w-0 h-0"
+                                  onFocus={handleToggleFocus}
+                                />
+                                <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
                               <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
                             </div>
                           </label>
@@ -1512,7 +2176,11 @@ const SettingsButton = ({
                           <div className="text-white/60 text-xs">Allows assigning specific backgrounds to individual workspaces.</div>
                         </div>
                       </div>
-                      <label className="inline-flex items-center cursor-pointer select-none">
+                      <label 
+                        className="inline-flex items-center cursor-pointer select-none"
+                        style={{ touchAction: 'manipulation' }}
+                        onTouchStart={handleToggleTouchStart}
+                      >
                         <input
                           type="checkbox"
                           checked={!!workspaceBackgroundsEnabled}
@@ -1528,7 +2196,19 @@ const SettingsButton = ({
 
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-white/70 text-sm">Zoom</span>
+                        <span className="text-white/70 text-sm">
+                          {workspaceBackgroundsEnabled && (() => {
+                            if (appearanceWorkspacesEnabled) {
+                              return appearanceWorkspaceActiveId !== 'master' && appearanceWorkspaceActiveId
+                                ? `Zoom (${workspaces.find(w => w.id === appearanceWorkspaceActiveId)?.name || 'Workspace'})`
+                                : 'Zoom';
+                            } else {
+                              return selectedWorkspaceForZoom
+                                ? `Zoom (${workspaces.find(w => w.id === selectedWorkspaceForZoom)?.name || 'Workspace'})`
+                                : 'Zoom';
+                            }
+                          })()}
+                        </span>
                         <span className="text-white/50 text-xs">{Math.round((backgroundZoom || 1) * 100)}%</span>
                       </div>
                       <input
@@ -1537,7 +2217,12 @@ const SettingsButton = ({
                         max="2"
                         step="0.05"
                         value={backgroundZoom || 1}
-                        onChange={(e) => onBackgroundZoomChange?.(Number(e.target.value))}
+                        onChange={(e) => {
+                          const workspaceId = appearanceWorkspacesEnabled 
+                            ? (appearanceWorkspaceActiveId === 'master' ? null : appearanceWorkspaceActiveId)
+                            : selectedWorkspaceForZoom;
+                          onBackgroundZoomChange?.(Number(e.target.value), workspaceId);
+                        }}
                         className="w-full"
                       />
                     </div>
@@ -1545,39 +2230,65 @@ const SettingsButton = ({
                     <BackgroundManager
                       embedded
                       onBackgroundChange={onBackgroundChange}
-                      currentBackground={currentBackground}
-                      currentMeta={currentBackgroundMeta}
+                      currentBackground={(() => {
+                        // When workspace backgrounds are enabled and on backgrounds tab, show background for selected workspace profile
+                        if (workspaceBackgroundsEnabled && activeTab === 'backgrounds') {
+                          // If a workspace is selected, show its background (or null if none assigned)
+                          if (selectedWorkspaceForZoom) {
+                            const entry = workspaceBackgrounds[selectedWorkspaceForZoom];
+                            return entry?.src || null;
+                          }
+                          // If Master Override is selected (null), show the default/global background
+                          return currentBackground;
+                        }
+                        return currentBackground;
+                      })()}
+                      currentMeta={(() => {
+                        // When workspace backgrounds are enabled and on backgrounds tab, show meta for selected workspace profile
+                        if (workspaceBackgroundsEnabled && activeTab === 'backgrounds') {
+                          // If a workspace is selected, show its meta (or null if none assigned)
+                          if (selectedWorkspaceForZoom) {
+                            const entry = workspaceBackgrounds[selectedWorkspaceForZoom];
+                            return entry?.meta || null;
+                          }
+                          // If Master Override is selected (null), show the default/global meta
+                          return currentBackgroundMeta;
+                        }
+                        return currentBackgroundMeta;
+                      })()}
                       workspaces={workspaces}
                       workspaceBackgrounds={workspaceBackgrounds}
                       anchoredWorkspaceId={settings?.speedDial?.anchoredWorkspaceId || null}
                       onAssignWorkspace={workspaceBackgroundsEnabled ? onWorkspaceBackgroundChange : undefined}
-                      onAssignDefault={onBackgroundChange}
+                      onAssignDefault={onDefaultWorkspaceBackgroundChange || onBackgroundChange}
                       workspaceAssignmentsEnabled={workspaceBackgroundsEnabled}
+                      selectedWorkspaceForAssignment={workspaceBackgroundsEnabled ? (activeTab === 'backgrounds' ? selectedWorkspaceForZoom : (appearanceWorkspacesEnabled ? (appearanceWorkspaceActiveId === 'master' || appearanceWorkspaceActiveId === null ? null : appearanceWorkspaceActiveId) : selectedWorkspaceForZoom)) : null}
                       title="Background Manager"
-                      subtitle="Upload and manage custom backgrounds"
+                      subtitle={workspaceBackgroundsEnabled ? (appearanceWorkspacesEnabled ? "Left-click any background to assign it to the selected workspace above." : "Left-click any background to assign it to the selected workspace in the header above.") : "Upload and manage custom backgrounds"}
                     />
 
-                    <div className="flex items-center justify-between p-3 bg-white/5 border border-white/15 rounded-lg">
+                    <div className="flex items-start justify-between p-3 bg-white/5 border border-white/15 rounded-lg">
                       <div>
-                        <div className="text-white text-sm font-medium">Match URL slug backgrounds</div>
+                        <div className="text-white text-sm font-medium">Follow URL slug (backgrounds)</div>
                         <div className="text-white/60 text-xs">
-                          When enabled, backgrounds follow the active workspace slug just like other themed elements.
+                          When enabled, workspace backgrounds are selected based on the URL slug (recommended). Turning this off can cause
+                          backgrounds to drift out of sync with the workspace shown in the URL bar.
                         </div>
                       </div>
-                      <label className="inline-flex items-center gap-2 text-white/80 text-xs cursor-pointer select-none">
+                      <label className="inline-flex items-center gap-2 text-white/80 text-xs cursor-pointer select-none ml-2">
                         <input
                           type="checkbox"
                           checked={!!backgroundFollowSlug}
                           onChange={(e) => onToggleBackgroundFollowSlug?.(!!e.target.checked)}
                           className="w-4 h-4 rounded border border-white/40 bg-white/10 text-cyan-400 focus:ring-0 focus:outline-none"
                         />
-                        <span>Enable</span>
+                        <span>On</span>
                       </label>
                     </div>
 
                     {workspaceBackgroundsEnabled ? (
                       <p className="text-white/50 text-xs">
-                        Tip: right-click any background tile to assign it to a specific workspace.
+                        Tip: Select a workspace above, then left-click any background to assign it to that workspace.
                       </p>
                     ) : (
                       <p className="text-white/40 text-xs">
@@ -1601,41 +2312,25 @@ const SettingsButton = ({
                           <div className="text-white text-sm font-medium">Appearance workspaces <span className="text-white/50 text-[11px]">- experimental</span></div>
                           <div className="text-white/60 text-xs">Toggle per-workspace appearance profiles and pick which one to edit.</div>
                         </div>
-                        <label className="inline-flex items-center gap-2 text-white/80 text-xs cursor-pointer select-none">
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
                           <input
                             type="checkbox"
                             checked={!!appearanceWorkspacesEnabled}
                             onChange={(e) => onToggleAppearanceWorkspaces?.(!!e.target.checked)}
-                            className="w-4 h-4 rounded border border-white/40 bg-white/10 text-cyan-400 focus:ring-0 focus:outline-none"
+                            className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
                           />
-                          <span>{appearanceWorkspacesEnabled ? 'Enabled' : 'Disabled'}</span>
+                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                          </div>
                         </label>
                       </div>
-                      {appearanceWorkspacesEnabled ? (
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap gap-2">
-                            {(appearanceWorkspaceOptions || []).map((opt) => {
-                              const isActive = appearanceWorkspaceActiveId === opt.id;
-                              const anchoredLabel = opt.anchored && opt.id !== 'default' ? ' (Anchored)' : '';
-                              return (
-                                <button
-                                  key={opt.id}
-                                  type="button"
-                                  onClick={() => onSelectAppearanceWorkspace?.(opt.id)}
-                                  className={`px-3 py-1 text-xs rounded-md border transition-colors ${isActive
-                                    ? 'bg-cyan-500/20 border-cyan-300 text-white'
-                                    : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:border-white/25'
-                                    }`}
-                                >
-                                  {opt.label}{anchoredLabel}
-                                </button>
-                              )
-                            })}
-                          </div>
-                          <div className="text-white/50 text-[10px]">Default / Anchored edits the base appearance; other entries save workspace-specific overrides.</div>
-                        </div>
-                      ) : (
-                        <div className="text-white/45 text-[10px]">Enable this to switch the Appearance tab between workspaces.</div>
+                      {!appearanceWorkspacesEnabled && (
+                        <div className="text-white/45 text-[10px] mt-2">Enable this to switch the Appearance tab between workspaces.</div>
                       )}
                     </div>
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
@@ -1672,12 +2367,21 @@ const SettingsButton = ({
                             <div className="text-white text-xs font-medium uppercase tracking-wide">Mirror layout</div>
                             <div className="text-white/60 text-[11px]">Swap the widgets and Speed Dial columns.</div>
                           </div>
-                          <label className="inline-flex items-center cursor-pointer select-none">
+                          <label 
+                            className="inline-flex items-center cursor-pointer select-none"
+                            style={{ touchAction: 'manipulation' }}
+                            onTouchStart={handleToggleTouchStart}
+                          >
                             <input
                               type="checkbox"
                               checked={!!effectiveAppearance?.mirrorLayout}
                               onChange={(e) => onToggleMirrorLayout?.(!!e.target.checked)}
+                              onFocus={handleToggleFocus}
+                              className="peer absolute opacity-0 w-0 h-0"
                             />
+                            <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                              <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                            </div>
                           </label>
                         </div>
                         <div className="flex items-center justify-between gap-3">
@@ -1719,6 +2423,28 @@ const SettingsButton = ({
                             />
                           </label>
                         </div>
+                        {settings?.appearance?.animatedOverlay && (
+                          <div className="flex items-center justify-between gap-3 mt-2 pt-2 border-t border-white/10">
+                            <div className="flex-1">
+                              <div className="text-white/80 text-xs">Animation speed</div>
+                              <div className="text-white/50 text-[10px]">
+                                {Number(settings?.appearance?.animatedOverlaySpeed ?? 2).toFixed(1)}s per cycle
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0" style={{ minWidth: '120px' }}>
+                              <input
+                                type="range"
+                                min="0.5"
+                                max="10"
+                                step="0.1"
+                                value={Number(settings?.appearance?.animatedOverlaySpeed ?? 2)}
+                                onChange={(e) => onChangeAnimatedOverlaySpeed?.(Number(e.target.value))}
+                                className="flex-1 opacity-100"
+                                title="Animation speed (0.5s - 10s per cycle)"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1756,16 +2482,92 @@ const SettingsButton = ({
                       <div className="mb-3">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-white/70 text-xs">Background blur</span>
-                          <span className="text-white/50 text-xs">{Number(settings?.speedDial?.blurPx ?? 0)}px</span>
+                          <span className="text-white/50 text-xs">
+                            {(() => {
+                              // When appearance workspaces are enabled, show blur for the active appearance workspace
+                              if (appearanceWorkspacesEnabled && appearanceWorkspaceActiveId) {
+                                const MASTER_APPEARANCE_ID = "master";
+
+                                // If viewing master override, show master blur
+                                if (appearanceWorkspaceActiveId === MASTER_APPEARANCE_ID) {
+                                  return Number(settings?.speedDial?.blurPx ?? 0);
+                                }
+
+                                // Use the workspace ID directly for blur lookup
+                                const workspaceIdForBlur = appearanceWorkspaceActiveId;
+
+                                // If viewing a specific workspace appearance, show that workspace's blur override or master blur
+                                const workspaceOverrides = globalSpeedDialSettings?.workspaceBlurOverrides || {};
+                                if (workspaceOverrides[workspaceIdForBlur] !== undefined) {
+                                  return Number(workspaceOverrides[workspaceIdForBlur]);
+                                }
+                                return Number(globalSpeedDialSettings?.blurPx ?? 0);
+                              }
+                              // When appearance workspaces are disabled, show master blur
+                              return Number(settings?.speedDial?.blurPx ?? 0);
+                            })()}px
+                          </span>
                         </div>
                         <input
                           type="range"
                           min="0"
                           max="24"
                           step="1"
-                          value={Number(settings?.speedDial?.blurPx ?? 0)}
-                          onChange={(e) => onChangeSpeedDialBlur?.(Number(e.target.value))}
+                          value={(() => {
+                            // When appearance workspaces are enabled, show blur for the active appearance workspace
+                            if (appearanceWorkspacesEnabled && appearanceWorkspaceActiveId) {
+                              const MASTER_APPEARANCE_ID = "master";
+
+                              // If viewing master override, show master blur
+                              if (appearanceWorkspaceActiveId === MASTER_APPEARANCE_ID) {
+                                return Number(settings?.speedDial?.blurPx ?? 0);
+                              }
+
+                              // Use the workspace ID directly for blur lookup
+                              const workspaceIdForBlur = appearanceWorkspaceActiveId;
+
+                              // If viewing a specific workspace appearance, show that workspace's blur override or master blur
+                              const workspaceOverrides = globalSpeedDialSettings?.workspaceBlurOverrides || {};
+                              if (workspaceOverrides[workspaceIdForBlur] !== undefined) {
+                                return Number(workspaceOverrides[workspaceIdForBlur]);
+                              }
+                              return Number(globalSpeedDialSettings?.blurPx ?? 0);
+                            }
+                            // When appearance workspaces are disabled, show master blur
+                            return Number(settings?.speedDial?.blurPx ?? 0);
+                          })()}
+                          onChange={(e) => {
+                            const newValue = Number(e.target.value);
+
+                            // When appearance workspaces are enabled, update blur for the active appearance workspace
+                            if (appearanceWorkspacesEnabled && appearanceWorkspaceActiveId) {
+                              const MASTER_APPEARANCE_ID = "master";
+
+                              // If viewing master override, update master blur
+                              if (appearanceWorkspaceActiveId === MASTER_APPEARANCE_ID) {
+                                onChangeSpeedDialBlur?.(newValue);
+                              } else {
+                                // Use the workspace ID directly to store blur override
+                                const workspaceIdForBlur = appearanceWorkspaceActiveId;
+                                // Update that workspace's blur override
+                                onChangeWorkspaceBlurOverride?.(workspaceIdForBlur, newValue);
+                              }
+                            } else {
+                              // When appearance workspaces are disabled, update master blur
+                              onChangeSpeedDialBlur?.(newValue);
+                            }
+                          }}
                           className="w-full"
+                          title={(() => {
+                            if (appearanceWorkspacesEnabled && appearanceWorkspaceActiveId) {
+                              const MASTER_APPEARANCE_ID = "master";
+                              if (appearanceWorkspaceActiveId === MASTER_APPEARANCE_ID) {
+                                return "Master override: affects all workspaces without individual blur overrides";
+                              }
+                              return `Workspace blur: controls blur for this appearance workspace only`;
+                            }
+                            return "Master blur: affects all workspaces";
+                          })()}
                         />
                       </div>
                       <div className="mb-4 p-2 bg-white/5 border border-white/10 rounded">
@@ -2287,7 +3089,34 @@ const SettingsButton = ({
                           <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded gap-3">
                             <span className="text-white/80 text-xs">Search bar blur</span>
                             <div className="flex items-center gap-2">
-                              <span className="text-white/50 text-[11px]">{Number(settings?.appearance?.searchBar?.blurPx ?? 20)}px</span>
+                              <span className={`text-white/50 text-[11px] ${settings?.appearance?.searchBarLinkSpeedDialBlur ? 'opacity-50' : ''}`}>
+                                {settings?.appearance?.searchBarLinkSpeedDialBlur
+                                  ? (() => {
+                                    // When linked, show the effective speed dial blur
+                                    if (appearanceWorkspacesEnabled && appearanceWorkspaceActiveId) {
+                                      const MASTER_APPEARANCE_ID = "master";
+
+                                      // If viewing master override, show master blur
+                                      if (appearanceWorkspaceActiveId === MASTER_APPEARANCE_ID) {
+                                        return Number(globalSpeedDialSettings?.blurPx ?? settings?.speedDial?.blurPx ?? 0);
+                                      }
+
+                                      // Use the workspace ID directly for blur lookup
+                                      const workspaceIdForBlur = appearanceWorkspaceActiveId;
+
+                                      // If viewing a specific workspace appearance, show that workspace's blur override or master blur
+                                      const workspaceOverrides = globalSpeedDialSettings?.workspaceBlurOverrides || {};
+                                      if (workspaceOverrides[workspaceIdForBlur] !== undefined) {
+                                        return Number(workspaceOverrides[workspaceIdForBlur]);
+                                      }
+                                      return Number(globalSpeedDialSettings?.blurPx ?? settings?.speedDial?.blurPx ?? 0);
+                                    }
+                                    // When appearance workspaces are disabled, show master blur
+                                    return Number(globalSpeedDialSettings?.blurPx ?? settings?.speedDial?.blurPx ?? 0);
+                                  })()
+                                  : Number(settings?.appearance?.searchBar?.blurPx ?? 20)
+                                }px
+                              </span>
                               <input
                                 type="range"
                                 min="0"
@@ -2296,8 +3125,17 @@ const SettingsButton = ({
                                 value={Number(settings?.appearance?.searchBar?.blurPx ?? 20)}
                                 onChange={(e) => onChangeSearchBarBlurPx?.(Number(e.target.value))}
                                 className="w-24"
+                                disabled={!!settings?.appearance?.searchBarLinkSpeedDialBlur}
                                 title="Search bar blur (px)"
                               />
+                              <label className="flex items-center gap-1 text-white/70 text-[11px]" title="Link blur to Speed Dial">
+                                <input
+                                  type="checkbox"
+                                  checked={!!settings?.appearance?.searchBarLinkSpeedDialBlur}
+                                  onChange={(e) => onToggleSearchBarLinkSpeedDialBlur?.(!!e.target.checked)}
+                                />
+                                <span>Link blur to Speed Dial</span>
+                              </label>
                             </div>
                           </div>
                           <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded gap-3">
@@ -2568,137 +3406,117 @@ const SettingsButton = ({
                   onFocusCapture={preserveScroll}
                 >
                   <div className="space-y-6">
+                    {/* Workspace Theming Toggle */}
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium mb-2">Workspace URL behavior</div>
-                      <div className="flex items-start justify-between gap-3 p-2 bg-white/5 border border-white/10 rounded">
+                      <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-white/80 text-xs">Double-click for workspace URL</div>
-                          <div className="text-white/60 text-[11px]">When on, updating the URL to /workspace requires a double-click. When off, a single click updates the URL.</div>
+                          <div className="text-white text-sm font-medium mb-1">Workspace Theming</div>
+                          <div className="text-white/60 text-xs">Enable per-workspace theming profiles (glow, typography, icons)</div>
                         </div>
-                        <label className="inline-flex items-center cursor-pointer select-none">
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
                           <input
                             type="checkbox"
-                            checked={!!(settings?.general?.autoUrlDoubleClick)}
-                            onChange={(e) => onToggleAutoUrlDoubleClick?.(e.target.checked)}
+                            checked={workspaceThemingEnabled}
+                            onChange={(e) => onToggleWorkspaceTheming?.(e.target.checked)}
                             className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
                           />
                           <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
                             <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
                           </div>
                         </label>
                       </div>
-                      <div className="mt-3 flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                        <span className="text-white/80 text-xs">Apply workspace glow by URL slug</span>
-                        <input
-                          type="checkbox"
-                          checked={!!settings?.speedDial?.glowByUrl}
-                          onChange={(e) => onToggleGlowByUrl?.(!!e.target.checked)}
-                          disabled={!settings?.general?.autoUrlDoubleClick}
-                          title={!settings?.general?.autoUrlDoubleClick ? 'Enable double-click for workspace URL to activate this option' : undefined}
-                        />
                       </div>
-                      <div className="text-white/50 text-[11px] mt-1">Automatically matches the current path (e.g. /work-name) before applying workspace colors and glow.</div>
 
-                      {settings?.general?.autoUrlDoubleClick && settings?.speedDial?.glowByUrl && (
-                        <div className="mt-3 p-2 bg-white/5 border border-white/10 rounded">
-                          <div className="text-white/80 text-xs mb-2">Glow behavior during soft switching</div>
-                          <div className="flex flex-col gap-2">
-                            <label className="flex items-center gap-2 text-white/70 text-xs">
+                    {!workspaceThemingEnabled ? (
+                      /* Master Override View - Combined Panel */
+                      <div className="space-y-6">
+                        <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
+                          <div className="text-white text-sm font-medium mb-3">Master Override</div>
+                          
+                          {/* Default Outer Glow */}
+                          <div className="mb-4">
+                            <div className="text-white/80 text-xs mb-2">Default outer glow</div>
+                            <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                              <span className="text-white/70 text-xs">Enable glow</span>
+                              <div className="flex items-center gap-2">
                               <input
-                                type="radio"
-                                name="soft-switch-glow-behavior"
-                                checked={(settings?.speedDial?.softSwitchGlowBehavior || 'noGlow') === 'noGlow'}
-                                onChange={() => {
-                                  onChangeSoftSwitchGlowBehavior?.('noGlow')
-                                  window.dispatchEvent(new CustomEvent('app-set-soft-switch-glow-behavior', { detail: 'noGlow' }))
-                                }}
-                              />
-                              <span>No Glow: Disables outer glow during soft switches.</span>
-                            </label>
-                            <label className="flex items-center gap-2 text-white/70 text-xs">
+                                  type="checkbox"
+                                  checked={settings?.theme?.includeGlow !== false}
+                                  onChange={(e) => onToggleDefaultOuterGlow?.(!!e.target.checked)}
+                                />
                               <input
-                                type="radio"
-                                name="soft-switch-glow-behavior"
-                                checked={settings?.speedDial?.softSwitchGlowBehavior === 'pinnedGlow'}
-                                onChange={() => {
-                                  onChangeSoftSwitchGlowBehavior?.('pinnedGlow')
-                                  window.dispatchEvent(new CustomEvent('app-set-soft-switch-glow-behavior', { detail: 'pinnedGlow' }))
-                                }}
-                              />
-                              <span>Pinned Glow: Glow stays fixed around the double-clicked workspace tab and Speed Dial.</span>
-                            </label>
-                            <label className="flex items-center gap-2 text-white/70 text-xs">
-                              <input
-                                type="radio"
-                                name="soft-switch-glow-behavior"
-                                checked={settings?.speedDial?.softSwitchGlowBehavior === 'glowFollows'}
-                                onChange={() => {
-                                  onChangeSoftSwitchGlowBehavior?.('glowFollows')
-                                  window.dispatchEvent(new CustomEvent('app-set-soft-switch-glow-behavior', { detail: 'glowFollows' }))
-                                }}
-                              />
-                              <span>Glow Follows: Speed Dial glow stays pinned; workspace tab glow moves with the active selection.</span>
-                            </label>
+                                  type="color"
+                                  value={settings?.speedDial?.glowColor || '#00ffff66'}
+                                  onChange={(e) => onChangeSpeedDialGlowColor?.(e.target.value)}
+                                  disabled={settings?.theme?.includeGlow === false}
+                                />
                           </div>
                         </div>
-                      )}
+                            <div className="text-white/50 text-[11px] mt-1">Speed Dial, workspace headers, and glow fallback effects reference this value when enabled.</div>
                     </div>
 
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium">Last In Theming</div>
-                      <div className="text-white/60 text-xs mb-3">Reapply your most recent workspace styling when opening the default homepage.</div>
-                      <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                        <div>
-                          <div className="text-white/80 text-xs">Enable Last In</div>
-                          <div className="text-white/50 text-[11px]">Overrides the base look on <code>localhost:3000</code> with the last workspace.</div>
-                        </div>
-                        <label className="inline-flex items-center cursor-pointer select-none">
+                          {/* Default Typography */}
+                          <div className="mb-4">
+                            <div className="text-white/80 text-xs mb-2">Default Typography</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                              <label className="flex items-center gap-2 bg-white/5 border border-white/10 rounded p-2">
+                                <span className="text-white/70 text-xs w-20">Text color</span>
                           <input
-                            type="checkbox"
-                            checked={lastInEnabled}
-                            onChange={(e) => onToggleLastInEnabled?.(!!e.target.checked)}
-                            className="peer absolute opacity-0 w-0 h-0"
-                          />
-                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
-                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
-                          </div>
+                                  type="color"
+                                  value={settings?.theme?.colors?.primary || '#ffffff'}
+                                  onChange={(e) => onManualTextColorChange?.(e.target.value)}
+                                />
                         </label>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <label className={`flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded ${lastInEnabled ? '' : 'opacity-50'}`}>
-                          <div className="text-white/80 text-xs">Include glow</div>
+                              <label className="flex items-center gap-2 bg-white/5 border border-white/10 rounded p-2">
+                                <span className="text-white/70 text-xs w-20">Accent color</span>
                           <input
-                            type="checkbox"
-                            checked={lastInIncludeGlow}
-                            onChange={(e) => onToggleLastInIncludeGlow?.(!!e.target.checked)}
-                            disabled={!lastInEnabled}
-                          />
-                        </label>
-                        <label className={`flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded ${lastInEnabled ? '' : 'opacity-50'}`}>
-                          <div className="text-white/80 text-xs">Include typography</div>
-                          <input
-                            type="checkbox"
-                            checked={lastInIncludeTypography}
-                            onChange={(e) => onToggleLastInIncludeTypography?.(!!e.target.checked)}
-                            disabled={!lastInEnabled}
+                                  type="color"
+                                  value={settings?.theme?.colors?.accent || '#ff00ff'}
+                                  onChange={(e) => onManualAccentColorChange?.(e.target.value)}
                           />
                         </label>
                       </div>
+                            <div className="text-white/70 text-xs uppercase tracking-wide mb-2">Font preset</div>
+                            <div className="flex flex-wrap gap-2">
+                              {fontPresetOptions.map(opt => (
+                                <button
+                                  key={opt.id}
+                                  onClick={() => onSelectFontPreset?.(opt.id)}
+                                  className={`px-3 py-1 rounded-full text-sm border transition-colors ${(settings?.appearance?.fontPreset || 'industrial') === opt.id
+                                    ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                                    : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                                    }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
                     </div>
 
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium mb-2">Shortcut Icon Theming</div>
-                      <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                          {/* Icon Theming */}
                         <div>
-                          <div className="text-white/80 text-xs">Enable icon theming</div>
+                            <div className="text-white/80 text-xs mb-2">Icon Theming</div>
+                            <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded mb-2">
+                              <div>
+                                <div className="text-white/70 text-xs">Enable icon theming</div>
                           <div className="text-white/50 text-[11px]">Apply color filters to shortcut icons.</div>
                         </div>
-                        <label className="inline-flex items-center cursor-pointer select-none">
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
                           <input
                             type="checkbox"
                             checked={!!settings?.iconTheming?.enabled}
                             onChange={(e) => onToggleIconThemingEnabled?.(e.target.checked)}
                             className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
                           />
                           <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
                             <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
@@ -2708,6 +3526,23 @@ const SettingsButton = ({
 
                       {settings?.iconTheming?.enabled && (
                         <div className="mt-3 space-y-3 pl-2 border-l-2 border-white/10 ml-1">
+                          <div className="flex items-start justify-between">
+                            <div className="pr-2">
+                                    <div className="text-white/70 text-xs">Follow URL slug (icons)</div>
+                                    <div className="text-white/50 text-[10px]">
+                                      When enabled, icon theming follows the workspace indicated by the URL slug.
+                              </div>
+                            </div>
+                            <label className="inline-flex items-center gap-1 text-white/80 text-[11px] cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={settings?.iconTheming?.followSlug !== false}
+                                onChange={(e) => onToggleIconThemingFollowSlug?.(!!e.target.checked)}
+                                className="w-4 h-4 rounded border border-white/40 bg-white/10 text-cyan-400 focus:ring-0 focus:outline-none"
+                              />
+                              <span>On</span>
+                            </label>
+                          </div>
                           <div className="flex items-center justify-between">
                             <span className="text-white/70 text-xs">Mode</span>
                             <div className="flex bg-white/10 rounded p-0.5 flex-wrap gap-0.5">
@@ -2762,17 +3597,7 @@ const SettingsButton = ({
                               </div>
                               <div>
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className="text-white/70 text-xs flex items-center gap-2">
-                                    Intensity
-                                    <label className="inline-flex items-center gap-1 text-[10px] text-white/50">
-                                      <input
-                                        type="checkbox"
-                                        checked={!!settings?.iconTheming?.linkWorkspaceOpacity}
-                                        onChange={(e) => onToggleIconThemingLinkOpacity?.(!!e.target.checked)}
-                                      />
-                                      <span>Link</span>
-                                    </label>
-                                  </span>
+                                        <span className="text-white/70 text-xs">Intensity</span>
                                   <span className="text-white/50 text-[10px]">{Math.round((settings?.iconTheming?.opacity ?? 0.5) * 100)}%</span>
                                 </div>
                                 <input
@@ -2791,17 +3616,189 @@ const SettingsButton = ({
                           {(settings?.iconTheming?.mode === 'grayscale' || settings?.iconTheming?.mode === 'grayscale_and_tint') && (
                             <div className="pt-1">
                               <div className="flex items-center justify-between mb-1">
-                                <span className="text-white/70 text-xs flex items-center gap-2">
-                                  Grayscale intensity
-                                  <label className="inline-flex items-center gap-1 text-[10px] text-white/50">
+                                      <span className="text-white/70 text-xs">Grayscale intensity</span>
+                                      <span className="text-white/50 text-[10px]">{Math.round((settings?.iconTheming?.grayscaleIntensity ?? 1) * 100)}%</span>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="1"
+                                      step="0.05"
+                                      value={settings?.iconTheming?.grayscaleIntensity ?? 1}
+                                      onChange={(e) => onChangeIconThemingGrayscaleIntensity?.(parseFloat(e.target.value))}
+                                      className="w-full"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Workspace Profiles View */
+                      <div className="space-y-6">
+                        {workspaceThemingSelectedId === null ? (
+                          /* Master Override Profile */
+                          <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
+                            <div className="text-white text-sm font-medium mb-3">Master Override</div>
+                            
+                            {/* Default Outer Glow */}
+                            <div className="mb-4">
+                              <div className="text-white/80 text-xs mb-2">Default outer glow</div>
+                              <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                                <span className="text-white/70 text-xs">Enable glow</span>
+                                <div className="flex items-center gap-2">
                                     <input
                                       type="checkbox"
-                                      checked={!!settings?.iconTheming?.linkWorkspaceGrayscale}
-                                      onChange={(e) => onToggleIconThemingLinkGrayscale?.(!!e.target.checked)}
-                                    />
-                                    <span>Link</span>
+                                    checked={settings?.theme?.includeGlow !== false}
+                                    onChange={(e) => onToggleDefaultOuterGlow?.(!!e.target.checked)}
+                                  />
+                                  <input
+                                    type="color"
+                                    value={settings?.speedDial?.glowColor || '#00ffff66'}
+                                    onChange={(e) => onChangeSpeedDialGlowColor?.(e.target.value)}
+                                    disabled={settings?.theme?.includeGlow === false}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Default Typography */}
+                            <div className="mb-4">
+                              <div className="text-white/80 text-xs mb-2">Default Typography</div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                                <label className="flex items-center gap-2 bg-white/5 border border-white/10 rounded p-2">
+                                  <span className="text-white/70 text-xs w-20">Text color</span>
+                                  <input
+                                    type="color"
+                                    value={settings?.theme?.colors?.primary || '#ffffff'}
+                                    onChange={(e) => onManualTextColorChange?.(e.target.value)}
+                                  />
                                   </label>
-                                </span>
+                                <label className="flex items-center gap-2 bg-white/5 border border-white/10 rounded p-2">
+                                  <span className="text-white/70 text-xs w-20">Accent color</span>
+                                  <input
+                                    type="color"
+                                    value={settings?.theme?.colors?.accent || '#ff00ff'}
+                                    onChange={(e) => onManualAccentColorChange?.(e.target.value)}
+                                  />
+                                </label>
+                              </div>
+                              <div className="text-white/70 text-xs uppercase tracking-wide mb-2">Font preset</div>
+                              <div className="flex flex-wrap gap-2">
+                                {fontPresetOptions.map(opt => (
+                                  <button
+                                    key={opt.id}
+                                    onClick={() => onSelectFontPreset?.(opt.id)}
+                                    className={`px-3 py-1 rounded-full text-sm border transition-colors ${(settings?.appearance?.fontPreset || 'industrial') === opt.id
+                                      ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                                      : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                                      }`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Icon Theming */}
+                            <div>
+                              <div className="text-white/80 text-xs mb-2">Icon Theming</div>
+                              <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded mb-2">
+                                <div>
+                                  <div className="text-white/70 text-xs">Enable icon theming</div>
+                                </div>
+                                <label className="inline-flex items-center cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!settings?.iconTheming?.enabled}
+                                    onChange={(e) => onToggleIconThemingEnabled?.(e.target.checked)}
+                                  className="peer absolute opacity-0 w-0 h-0"
+                                  onFocus={handleToggleFocus}
+                                />
+                                <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                                    <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                                  </div>
+                                </label>
+                              </div>
+
+                              {settings?.iconTheming?.enabled && (
+                                <div className="mt-3 space-y-3 pl-2 border-l-2 border-white/10 ml-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-white/70 text-xs">Mode</span>
+                                    <div className="flex bg-white/10 rounded p-0.5 flex-wrap gap-0.5">
+                                      <button
+                                        onClick={() => onSelectIconThemingMode?.('grayscale')}
+                                        className={`px-2 py-1 text-[10px] rounded-sm transition-colors flex-1 ${(settings?.iconTheming?.mode || 'grayscale') === 'grayscale'
+                                          ? 'bg-white/20 text-white'
+                                          : 'text-white/50 hover:text-white/80'
+                                          }`}
+                                      >
+                                        Grayscale
+                                      </button>
+                                      <button
+                                        onClick={() => onSelectIconThemingMode?.('tint')}
+                                        className={`px-2 py-1 text-[10px] rounded-sm transition-colors flex-1 ${settings?.iconTheming?.mode === 'tint'
+                                          ? 'bg-white/20 text-white'
+                                          : 'text-white/50 hover:text-white/80'
+                                          }`}
+                                      >
+                                        Tint
+                                      </button>
+                                      <button
+                                        onClick={() => onSelectIconThemingMode?.('monochrome')}
+                                        className={`px-2 py-1 text-[10px] rounded-sm transition-colors flex-1 ${settings?.iconTheming?.mode === 'monochrome'
+                                          ? 'bg-white/20 text-white'
+                                          : 'text-white/50 hover:text-white/80'
+                                          }`}
+                                      >
+                                        Monochrome
+                                      </button>
+                                      <button
+                                        onClick={() => onSelectIconThemingMode?.('grayscale_and_tint')}
+                                        className={`px-2 py-1 text-[10px] rounded-sm transition-colors flex-1 ${settings?.iconTheming?.mode === 'grayscale_and_tint'
+                                          ? 'bg-white/20 text-white'
+                                          : 'text-white/50 hover:text-white/80'
+                                          }`}
+                                      >
+                                        Grayscale & Tint
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {(settings?.iconTheming?.mode === 'tint' || settings?.iconTheming?.mode === 'monochrome' || settings?.iconTheming?.mode === 'grayscale_and_tint') && (
+                                    <>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-white/70 text-xs">Tint color</span>
+                                        <input
+                                          type="color"
+                                          value={settings?.iconTheming?.color || '#ff0000'}
+                                          onChange={(e) => onChangeIconThemingColor?.(e.target.value)}
+                                        />
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="text-white/70 text-xs">Intensity</span>
+                                          <span className="text-white/50 text-[10px]">{Math.round((settings?.iconTheming?.opacity ?? 0.5) * 100)}%</span>
+                                        </div>
+                                        <input
+                                          type="range"
+                                          min="0"
+                                          max="1"
+                                          step="0.05"
+                                          value={settings?.iconTheming?.opacity ?? 0.5}
+                                          onChange={(e) => onChangeIconThemingOpacity?.(parseFloat(e.target.value))}
+                                          className="w-full"
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {(settings?.iconTheming?.mode === 'grayscale' || settings?.iconTheming?.mode === 'grayscale_and_tint') && (
+                                    <div className="pt-1">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-white/70 text-xs">Grayscale intensity</span>
                                 <span className="text-white/50 text-[10px]">{Math.round((settings?.iconTheming?.grayscaleIntensity ?? 1) * 100)}%</span>
                               </div>
                               <input
@@ -2818,37 +3815,88 @@ const SettingsButton = ({
                         </div>
                       )}
                     </div>
-
-                    {/* Workspace Icon Theming */}
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium mb-2">Workspace Icon Theming</div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {workspaces.map(ws => {
-                          const isAnchored = anchoredWorkspaceId === ws.id;
-                          const wsSettings = settings?.iconTheming?.workspaces?.[ws.id] || {};
-                          const wsMode = wsSettings.mode || 'default';
-                          const effectiveMode = wsMode === 'default' ? (settings?.iconTheming?.mode || 'grayscale') : wsMode;
-                          const linkOpacity = !!settings?.iconTheming?.linkWorkspaceOpacity;
-                          const linkGrayscale = !!settings?.iconTheming?.linkWorkspaceGrayscale;
-                          const wsColor = wsSettings.color || settings?.iconTheming?.color || '#ff0000';
-                          const wsOpacity = linkOpacity
-                            ? settings?.iconTheming?.opacity ?? 0.5
-                            : wsSettings.opacity ?? 0.5;
-                          const wsGrayscale = linkGrayscale
-                            ? settings?.iconTheming?.grayscaleIntensity ?? 1
-                            : wsSettings.grayscaleIntensity ?? (settings?.iconTheming?.grayscaleIntensity ?? 1);
+                          </div>
+                        ) : (
+                          /* Individual Workspace Profile */
+                          (() => {
+                            const selectedWs = workspaces.find(ws => ws.id === workspaceThemingSelectedId);
+                            if (!selectedWs) return null;
+                            
+                            const wsGlowColor = (settings?.speedDial?.workspaceGlowColors || {})[workspaceThemingSelectedId] || settings?.speedDial?.glowColor || '#00ffff66';
+                            const wsTextFont = (settings?.speedDial?.workspaceTextFonts || {})[workspaceThemingSelectedId] || '';
+                            const wsTextColor = (settings?.speedDial?.workspaceTextColors || {})[workspaceThemingSelectedId] || '#ffffff';
+                            const wsAccentColor = (settings?.speedDial?.workspaceAccentColors || {})[workspaceThemingSelectedId] || '#ff00ff';
+                            const wsIconSettings = settings?.iconTheming?.workspaces?.[workspaceThemingSelectedId] || {};
+                            const wsIconMode = wsIconSettings.mode || 'default';
+                            const effectiveIconMode = wsIconMode === 'default' ? (settings?.iconTheming?.mode || 'grayscale') : wsIconMode;
+                            const wsIconColor = wsIconSettings.color || settings?.iconTheming?.color || '#ff0000';
+                            const wsIconOpacity = wsIconSettings.opacity ?? (settings?.iconTheming?.opacity ?? 0.5);
+                            const wsIconGrayscale = wsIconSettings.grayscaleIntensity ?? (settings?.iconTheming?.grayscaleIntensity ?? 1);
 
                           return (
-                            <div key={ws.id} className={`p-2 bg-white/5 border border-white/10 rounded ${isAnchored ? 'opacity-40' : ''}`}>
-                              <div className="text-white/70 text-xs mb-1">{ws.name}{isAnchored ? ' (Anchored)' : ''}</div>
+                              <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
+                                <div className="text-white text-sm font-medium mb-3">{selectedWs.name || 'Workspace'}</div>
+                                
+                                {/* Workspace Glow */}
+                                <div className="mb-4">
+                                  <div className="text-white/80 text-xs mb-2">Glow Color</div>
+                                  <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                                    <span className="text-white/70 text-xs">Workspace glow</span>
+                                    <input
+                                      type="color"
+                                      value={wsGlowColor}
+                                      onChange={(e) => onChangeWorkspaceGlowColor?.(workspaceThemingSelectedId, e.target.value)}
+                                    />
+                                  </div>
+                                </div>
 
-                              <div className="mb-2">
+                                {/* Workspace Typography */}
+                                <div className="mb-4">
+                                  <div className="text-white/80 text-xs mb-2">Typography</div>
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-white/70 text-xs w-16">Font</span>
                                 <select
-                                  className="w-full px-2 py-1 bg-white/10 border border-white/20 rounded text-white/90 text-xs"
-                                  value={wsMode}
-                                  onChange={(e) => onChangeWorkspaceIconThemeMode?.(ws.id, e.target.value)}
-                                  disabled={isAnchored || !settings?.iconTheming?.enabled}
-                                  title={isAnchored ? 'Anchored workspace inherits global settings.' : undefined}
+                                        className="flex-1 px-2 py-1 bg-white/10 border border-white/20 rounded text-white/90 text-xs"
+                                        onChange={(e) => onChangeWorkspaceTextFont?.(workspaceThemingSelectedId, e.target.value)}
+                                        value={wsTextFont}
+                                      >
+                                        <option value="">Default</option>
+                                        {fontPresetOptions.map(opt => (
+                                          <option key={opt.id} value={opt.label}>{opt.label}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-white/70 text-xs w-16">Text</span>
+                                      <input
+                                        type="color"
+                                        value={wsTextColor}
+                                        onChange={(e) => onChangeWorkspaceTextColor?.(workspaceThemingSelectedId, e.target.value)}
+                                      />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-white/70 text-xs w-16">Accent</span>
+                                      <input
+                                        type="color"
+                                        value={wsAccentColor}
+                                        onChange={(e) => onChangeWorkspaceAccentColor?.(workspaceThemingSelectedId, e.target.value)}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Workspace Icon Theming */}
+                                <div>
+                                  <div className="text-white/80 text-xs mb-2">Icon Theming</div>
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-white/70 text-xs">Mode</span>
+                                      <select
+                                        className="px-2 py-1 bg-white/10 border border-white/20 rounded text-white/90 text-xs"
+                                        value={wsIconMode}
+                                        onChange={(e) => onChangeWorkspaceIconThemeMode?.(workspaceThemingSelectedId, e.target.value)}
+                                        disabled={!settings?.iconTheming?.enabled}
                                 >
                                   <option value="default">Default</option>
                                   <option value="grayscale">Grayscale</option>
@@ -2858,239 +3906,217 @@ const SettingsButton = ({
                                 </select>
                               </div>
 
-                              {(effectiveMode === 'tint' || effectiveMode === 'monochrome' || effectiveMode === 'grayscale_and_tint') && (
+                                    {(effectiveIconMode === 'tint' || effectiveIconMode === 'monochrome' || effectiveIconMode === 'grayscale_and_tint') && (
                                 <>
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-white/60 text-xs">Color</span>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-white/70 text-xs">Color</span>
                                     <input
                                       type="color"
-                                      value={wsColor}
-                                      onChange={(e) => onChangeWorkspaceIconThemeColor?.(ws.id, e.target.value)}
-                                      disabled={isAnchored || !settings?.iconTheming?.enabled}
+                                            value={wsIconColor}
+                                            onChange={(e) => onChangeWorkspaceIconThemeColor?.(workspaceThemingSelectedId, e.target.value)}
+                                            disabled={!settings?.iconTheming?.enabled}
                                     />
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-white/60 text-xs w-12">Opacity</span>
+                                        <div>
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-white/70 text-xs">Intensity</span>
+                                            <span className="text-white/50 text-[10px]">{Math.round(wsIconOpacity * 100)}%</span>
+                                          </div>
                                     <input
                                       type="range"
                                       min="0"
                                       max="1"
                                       step="0.05"
-                                      value={wsOpacity}
-                                      onChange={(e) => onChangeWorkspaceIconThemeOpacity?.(ws.id, parseFloat(e.target.value))}
-                                      className="flex-1"
-                                      disabled={isAnchored || !settings?.iconTheming?.enabled || linkOpacity}
-                                    />
-                                    {linkOpacity && (
-                                      <span className="text-[10px] text-white/50">Linked</span>
-                                    )}
+                                            value={wsIconOpacity}
+                                            onChange={(e) => onChangeWorkspaceIconThemeOpacity?.(workspaceThemingSelectedId, parseFloat(e.target.value))}
+                                            className="w-full"
+                                            disabled={!settings?.iconTheming?.enabled}
+                                          />
                                   </div>
                                 </>
                               )}
 
-                              {(effectiveMode === 'grayscale' || effectiveMode === 'grayscale_and_tint') && (
-                                <>
-                                  <div className="flex items-center justify-between mt-3">
-                                    <span className="text-white/60 text-xs">Grayscale</span>
-                                    <span className="text-white/50 text-[10px]">{Math.round(wsGrayscale * 100)}%</span>
+                                    {(effectiveIconMode === 'grayscale' || effectiveIconMode === 'grayscale_and_tint') && (
+                                      <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="text-white/70 text-xs">Grayscale</span>
+                                          <span className="text-white/50 text-[10px]">{Math.round(wsIconGrayscale * 100)}%</span>
                                   </div>
-                                  <div className="flex items-center gap-2">
                                     <input
                                       type="range"
                                       min="0"
                                       max="1"
                                       step="0.05"
-                                      value={wsGrayscale}
-                                      onChange={(e) => onChangeWorkspaceIconThemeGrayscaleIntensity?.(ws.id, parseFloat(e.target.value))}
-                                      className="flex-1"
-                                      disabled={isAnchored || !settings?.iconTheming?.enabled || linkGrayscale}
-                                    />
-                                    {linkGrayscale && (
-                                      <span className="text-[10px] text-white/50">Linked</span>
-                                    )}
+                                          value={wsIconGrayscale}
+                                          onChange={(e) => onChangeWorkspaceIconThemeGrayscaleIntensity?.(workspaceThemingSelectedId, parseFloat(e.target.value))}
+                                          className="w-full"
+                                          disabled={!settings?.iconTheming?.enabled}
+                                        />
                                   </div>
-                                </>
                               )}
                             </div>
-                          )
-                        })}
                       </div>
-                      <div className="text-white/60 text-xs mt-2">Override global icon theming for specific workspaces.</div>
-                      {anchoredWorkspaceId && (
-                        <div className="text-white/45 text-[10px] mt-2">Anchored workspace inherits global icon theming settings.</div>
+                              </div>
+                            );
+                          })()
                       )}
                     </div>
+                    )}
 
-                    { /* System-wide glow moved to Appearance */}
-
+                    {/* Advanced Theming Options - Collapsible (Universal - always at bottom) */}
+                    <div className="border-t border-white/10 pt-4 mt-4">
+                      <button
+                        type="button"
+                        onClick={() => setThemingAdvancedOpen(!themingAdvancedOpen)}
+                        className="w-full flex items-center justify-between p-3 bg-white/5 border border-white/15 rounded-lg hover:bg-white/10 transition-colors"
+                      >
+                        <span className="text-white text-sm font-medium">Advanced Options</span>
+                        {themingAdvancedOpen ? (
+                          <ChevronUp className="w-4 h-4 text-white/70" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-white/70" />
+                        )}
+                      </button>
+                      
+                      <AnimatePresence>
+                        {themingAdvancedOpen && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="space-y-6 pt-4">
+                              {/* Workspace URL behavior */}
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium mb-2">Default outer glow</div>
-                      <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                        <span className="text-white/80 text-xs">Default outer glow</span>
-                        <div className="flex items-center gap-2">
+                                <div className="text-white text-sm font-medium mb-2">Workspace URL behavior</div>
+                                <div className="flex items-start justify-between gap-3 p-2 bg-white/5 border border-white/10 rounded">
+                                  <div>
+                                    <div className="text-white/80 text-xs">Double-click for workspace URL</div>
+                                    <div className="text-white/60 text-[11px]">When on, updating the URL to /workspace requires a double-click. When off, a single click updates the URL.</div>
+                                  </div>
+                                  <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
                           <input
                             type="checkbox"
-                            checked={settings?.theme?.includeGlow !== false}
-                            onChange={(e) => onToggleDefaultOuterGlow?.(!!e.target.checked)}
-                            title="Enable or disable default outer glow color"
-                          />
+                                      checked={!!(settings?.general?.autoUrlDoubleClick)}
+                                      onChange={(e) => onToggleAutoUrlDoubleClick?.(e.target.checked)}
+                                  className="peer absolute opacity-0 w-0 h-0"
+                                  onFocus={handleToggleFocus}
+                                />
+                                <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                                      <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                                    </div>
+                                  </label>
+                                </div>
+                                <div className="mt-3 flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                                  <span className="text-white/80 text-xs">Apply workspace glow by URL slug</span>
                           <input
-                            type="color"
-                            value={settings?.speedDial?.glowColor || '#00ffff66'}
-                            onChange={(e) => onChangeSpeedDialGlowColor?.(e.target.value)}
-                            disabled={settings?.theme?.includeGlow === false}
-                            title={settings?.theme?.includeGlow === false ? 'Enable default outer glow to edit' : 'Select glow color'}
+                                    type="checkbox"
+                                    checked={!!settings?.speedDial?.glowByUrl}
+                                    onChange={(e) => onToggleGlowByUrl?.(!!e.target.checked)}
+                                    disabled={!settings?.general?.autoUrlDoubleClick}
+                                    title={!settings?.general?.autoUrlDoubleClick ? 'Enable double-click for workspace URL to activate this option' : undefined}
                           />
                         </div>
-                      </div>
-                      <div className="text-white/60 text-xs mt-2">Speed Dial, workspace headers, and glow fallback effects reference this value when enabled.</div>
-                    </div>
+                                <div className="text-white/50 text-[11px] mt-1">Automatically matches the current path (e.g. /work-name) before applying workspace colors and glow.</div>
 
-                    {/* Workspace glow colors */}
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium mb-2">Workspace Glow Colors</div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {workspaces.map(ws => {
-                          const isAnchored = anchoredWorkspaceId === ws.id
-                          return (
-                            <label
-                              key={ws.id}
-                              className={`flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded ${isAnchored ? 'opacity-40' : ''}`}
-                            >
-                              <span className="text-white/80 text-xs">{ws.name}{isAnchored ? ' (Anchored)' : ''}</span>
+                                {settings?.general?.autoUrlDoubleClick && settings?.speedDial?.glowByUrl && (
+                                  <div className="mt-3 p-2 bg-white/5 border border-white/10 rounded">
+                                    <div className="text-white/80 text-xs mb-2">Glow behavior during soft switching</div>
+                                    <div className="flex flex-col gap-2">
+                                      <label className="flex items-center gap-2 text-white/70 text-xs">
                               <input
-                                type="color"
-                                value={(settings?.speedDial?.workspaceGlowColors || {})[ws.id] || settings?.speedDial?.glowColor || '#00ffff66'}
-                                onChange={(e) => onChangeWorkspaceGlowColor?.(ws.id, e.target.value)}
-                                disabled={isAnchored}
-                                title={isAnchored ? 'Anchored workspace uses default glow.' : undefined}
-                              />
+                                          type="radio"
+                                          name="soft-switch-glow-behavior"
+                                          checked={(settings?.speedDial?.softSwitchGlowBehavior || 'noGlow') === 'noGlow'}
+                                          onChange={() => {
+                                            onChangeSoftSwitchGlowBehavior?.('noGlow')
+                                            window.dispatchEvent(new CustomEvent('app-set-soft-switch-glow-behavior', { detail: 'noGlow' }))
+                                          }}
+                                        />
+                                        <span>No Glow: Disables outer glow during soft switches.</span>
                             </label>
-                          )
-                        })}
-                      </div>
-                      <div className="text-white/60 text-xs mt-2">When changing workspaces (URL updates), the dial uses the assigned glow color. Toggle transient effects from the shared glow control above.</div>
-                      {anchoredWorkspaceId && (
-                        <div className="text-white/45 text-[10px] mt-2">Anchored workspace always uses the default glow color.</div>
-                      )}
-                    </div>
-
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium">Default Typography</div>
-                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <label className="flex items-center gap-3 bg-white/5 border border-white/10 rounded p-2">
-                          <span className="text-white/70 text-xs w-24">Text color</span>
+                                      <label className="flex items-center gap-2 text-white/70 text-xs">
                           <input
-                            type="color"
-                            value={settings?.theme?.colors?.primary || '#ffffff'}
-                            onChange={(e) => onManualTextColorChange?.(e.target.value)}
-                          />
+                                          type="radio"
+                                          name="soft-switch-glow-behavior"
+                                          checked={settings?.speedDial?.softSwitchGlowBehavior === 'pinnedGlow'}
+                                          onChange={() => {
+                                            onChangeSoftSwitchGlowBehavior?.('pinnedGlow')
+                                            window.dispatchEvent(new CustomEvent('app-set-soft-switch-glow-behavior', { detail: 'pinnedGlow' }))
+                                          }}
+                                        />
+                                        <span>Pinned Glow: Glow stays fixed around the double-clicked workspace tab and Speed Dial.</span>
                         </label>
-                        <label className="flex items-center gap-3 bg-white/5 border border-white/10 rounded p-2">
-                          <span className="text-white/70 text-xs w-24">Accent color</span>
+                                      <label className="flex items-center gap-2 text-white/70 text-xs">
                           <input
-                            type="color"
-                            value={settings?.theme?.colors?.accent || '#ff00ff'}
-                            onChange={(e) => onManualAccentColorChange?.(e.target.value)}
-                          />
+                                          type="radio"
+                                          name="soft-switch-glow-behavior"
+                                          checked={settings?.speedDial?.softSwitchGlowBehavior === 'glowFollows'}
+                                          onChange={() => {
+                                            onChangeSoftSwitchGlowBehavior?.('glowFollows')
+                                            window.dispatchEvent(new CustomEvent('app-set-soft-switch-glow-behavior', { detail: 'glowFollows' }))
+                                          }}
+                                        />
+                                        <span>Glow Follows: Speed Dial glow stays pinned; workspace tab glow moves with the active selection.</span>
                         </label>
                       </div>
-                      <div className="mt-4 text-white/70 text-xs uppercase tracking-wide">Font preset</div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {fontPresetOptions.map(opt => (
-                          <button
-                            key={opt.id}
-                            onClick={() => onSelectFontPreset?.(opt.id)}
-                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${(settings?.appearance?.fontPreset || 'industrial') === opt.id
-                              ? 'bg-cyan-500/20 border-cyan-400 text-white'
-                              : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                              }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
                       </div>
+                                )}
                     </div>
 
-                    {/* Workspace typography */}
+                              {/* Last In Theming */}
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-white text-sm font-medium">Workspace Typography</div>
+                                <div className="text-white text-sm font-medium">Last In Theming</div>
+                                <div className="text-white/60 text-xs mb-3">Reapply your most recent workspace styling when opening the default homepage.</div>
+                                <div className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
+                                  <div>
+                                    <div className="text-white/80 text-xs">Enable Last In</div>
+                                    <div className="text-white/50 text-[11px]">Overrides the base look on <code>localhost:3000</code> with the last workspace.</div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {workspaces.map(ws => {
-                          const isAnchored = anchoredWorkspaceId === ws.id
-                          return (
-                            <div key={ws.id} className={`p-2 bg-white/5 border border-white/10 rounded ${isAnchored ? 'opacity-40' : ''}`}>
-                              <div className="text-white/70 text-xs mb-1">{ws.name}{isAnchored ? ' (Anchored)' : ''}</div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-white/60 text-xs w-16">Font</span>
-                                <select
-                                  className="flex-1 px-2 py-1 bg-white/10 border border-white/20 rounded text-white/90 text-xs"
-                                  onChange={(e) => onChangeWorkspaceTextFont?.(ws.id, e.target.value)}
-                                  value={(settings?.speedDial?.workspaceTextFonts || {})[ws.id] || ''}
-                                  disabled={isAnchored}
-                                  title={isAnchored ? 'Anchored workspace inherits default typography.' : undefined}
-                                >
-                                  <option value="">Default</option>
-                                  {fontPresetOptions.map(opt => (
-                                    <option key={opt.id} value={opt.label}>{opt.label}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-white/60 text-xs w-16">Color</span>
+                                  <label className="inline-flex items-center cursor-pointer select-none">
                                 <input
-                                  type="color"
-                                  value={(settings?.speedDial?.workspaceTextColors || {})[ws.id] || '#ffffff'}
-                                  onChange={(e) => onChangeWorkspaceTextColor?.(ws.id, e.target.value)}
-                                  disabled={isAnchored}
-                                  title={isAnchored ? 'Anchored workspace uses global text color.' : undefined}
+                                      type="checkbox"
+                                      checked={lastInEnabled}
+                                      onChange={(e) => onToggleLastInEnabled?.(!!e.target.checked)}
+                                  className="peer absolute opacity-0 w-0 h-0"
+                                  onFocus={handleToggleFocus}
                                 />
+                                <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                                      <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
                               </div>
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="text-white/60 text-xs w-16">Accent</span>
+                                  </label>
+                                </div>
+                                <div className="mt-3 space-y-2">
+                                  <label className={`flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded ${lastInEnabled ? '' : 'opacity-50'}`}>
+                                    <div className="text-white/80 text-xs">Include glow</div>
                                 <input
-                                  type="color"
-                                  value={isAnchored
-                                    ? (settings?.theme?.colors?.accent || '#ff00ff')
-                                    : ((settings?.speedDial?.workspaceAccentColors || {})[ws.id] ?? '#ff00ff')}
-                                  onChange={(e) => onChangeWorkspaceAccentColor?.(ws.id, e.target.value)}
-                                  disabled={isAnchored}
-                                  title={isAnchored ? 'Anchored workspace uses global accent color.' : undefined}
-                                />
+                                      type="checkbox"
+                                      checked={lastInIncludeGlow}
+                                      onChange={(e) => onToggleLastInIncludeGlow?.(!!e.target.checked)}
+                                      disabled={!lastInEnabled}
+                                    />
+                                  </label>
+                                  <label className={`flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded ${lastInEnabled ? '' : 'opacity-50'}`}>
+                                    <div className="text-white/80 text-xs">Include typography</div>
+                                    <input
+                                      type="checkbox"
+                                      checked={lastInIncludeTypography}
+                                      onChange={(e) => onToggleLastInIncludeTypography?.(!!e.target.checked)}
+                                      disabled={!lastInEnabled}
+                                    />
+                                  </label>
                               </div>
                             </div>
-                          )
-                        })}
                       </div>
-                      <div className="text-white/60 text-xs mt-2">Speed Dial is exempt from the universal font/color. Hover labels and workspace title follow these settings.</div>
-                      {anchoredWorkspaceId && (
-                        <div className="text-white/45 text-[10px] mt-2">Anchored workspace inherits global typography and colors.</div>
-                      )}
-                    </div>
-
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium mb-2">Workspace-wide sync</div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                          <span className="text-white/80 text-xs">Match all text colors to active workspace</span>
-                          <input type="checkbox" checked={!!settings?.appearance?.matchWorkspaceTextColor} onChange={(e) => onToggleMatchWorkspaceTextColor?.(e.target.checked)} />
-                        </label>
-                        <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                          <span className="text-white/80 text-xs">Match accent text to active workspace</span>
-                          <input type="checkbox" checked={!!settings?.appearance?.matchWorkspaceAccentColor} onChange={(e) => onToggleMatchWorkspaceAccentColor?.(e.target.checked)} />
-                        </label>
-                        <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                          <span className="text-white/80 text-xs">Match fonts to active workspace</span>
-                          <input type="checkbox" checked={!!settings?.appearance?.matchWorkspaceFonts} onChange={(e) => onToggleMatchWorkspaceFonts?.(e.target.checked)} />
-                        </label>
-                        <label className="flex items-center justify-between p-2 bg-white/5 border border-white/10 rounded">
-                          <span className="text-white/80 text-xs">Apply font/color only when URL matches</span>
-                          <input type="checkbox" checked={!!settings?.speedDial?.workspaceTextByUrl} onChange={(e) => onToggleWorkspaceTextByUrl?.(e.target.checked)} />
-                        </label>
-                      </div>
-                      <div className="text-white/60 text-xs mt-2">Use these toggles to cascade workspace styling rules or keep them scoped.</div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
 
                   </div>
@@ -3105,6 +4131,217 @@ const SettingsButton = ({
                   onFocusCapture={preserveScroll}
                 >
                   <div className="space-y-6">
+                    {/* Workspace Widgets Toggle */}
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-white text-sm font-medium">Workspace Widgets</div>
+                          <div className="text-white/60 text-xs">Enable per-workspace widget profiles. Each workspace can have different widget visibility and settings.</div>
+                        </div>
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={workspaceWidgetsEnabled}
+                            onChange={(e) => onToggleWorkspaceWidgets?.(!!e.target.checked)}
+                            className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
+                          />
+                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Clock Module */}
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-white text-sm font-medium">Clock</div>
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={widgetsSettings?.enableClock !== false}
+                            onChange={(e) => onToggleEnableClock?.(!!e.target.checked)}
+                            className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
+                          />
+                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                          </div>
+                        </label>
+                      </div>
+                      <div>
+                        <div className="text-white text-xs font-medium mb-2">Clock layout</div>
+                        <div className="flex gap-2">
+                          {[
+                            { id: 'preset1', label: 'Preset 1' },
+                            { id: 'preset2', label: 'Preset 2' },
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              onClick={() => onSelectClockPreset?.(opt.id)}
+                              className={`px-3 py-1 rounded-full text-sm border transition-colors ${clockLayoutPreset === opt.id
+                                ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                                : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                                }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="text-white/50 text-xs mt-2">Preset 2 enlarges the primary clock face and arranges sub-zones in capsules.</div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span className="text-white/80 text-xs">Show seconds</span>
+                          <input
+                            type="checkbox"
+                            checked={!!(widgetsSettings?.showSeconds)}
+                            onChange={(e) => onToggleShowSeconds?.(e.target.checked)}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span className="text-white/80 text-xs">24-hour clock</span>
+                          <input
+                            type="checkbox"
+                            checked={!!(widgetsSettings?.twentyFourHour)}
+                            onChange={(e) => onToggleTwentyFourHour?.(e.target.checked)}
+                          />
+                        </label>
+                      </div>
+                      <div>
+                        <div className="text-white text-xs font-medium mb-2">Sub timezones</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {TZ_CHOICES.map(opt => {
+                            const checked = (widgetsSettings?.subTimezones || []).includes(opt.id)
+                            return (
+                              <label key={opt.id} className="flex items-center gap-2 text-white/80 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const current = new Set(widgetsSettings?.subTimezones || [])
+                                    if (e.target.checked) current.add(opt.id)
+                                    else current.delete(opt.id)
+                                    onChangeSubTimezones?.(Array.from(current))
+                                  }}
+                                />
+                                <span>{opt.label}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                        <div className="text-white/50 text-xs mt-2">Local time is shown as the main clock. Selected sub timezones appear underneath.</div>
+                      </div>
+                    </div>
+
+                    {/* Weather Module */}
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-white text-sm font-medium">Weather</div>
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={widgetsSettings?.enableWeather !== false}
+                            onChange={(e) => onToggleEnableWeather?.(!!e.target.checked)}
+                            className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
+                          />
+                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                          </div>
+                        </label>
+                      </div>
+                      <div>
+                        <div className="text-white text-xs font-medium mb-2">Weather layout</div>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { id: 'preset1', label: 'Preset 1' },
+                            { id: 'preset2', label: 'Preset 2' },
+                            { id: 'preset3', label: 'Preset 3' },
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              onClick={() => onSelectWeatherPreset?.(opt.id)}
+                              className={`px-3 py-1 rounded-full text-sm border transition-colors ${weatherLayoutPreset === opt.id
+                                ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                                : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                                }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="text-white/50 text-xs mt-2">Preset 2 is the compact + detail variant; Preset 3 mirrors it with a flipped hero row and a tighter 7-day strip.</div>
+                      </div>
+                      <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-3 py-2">
+                        <div>
+                          <div className="text-white/80 text-xs font-medium uppercase tracking-wide">Show details on hover</div>
+                          <div className="text-white/60 text-[11px]">Peek at the detail panel by hovering over a day; click to pin.</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={widgetsSettings?.weatherShowDetailsOnHover !== false}
+                          onChange={(e) => onToggleWeatherHoverDetails?.(!!e.target.checked)}
+                        />
+                      </label>
+                      <div className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                        <span className="text-white/80 text-xs">Units</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => onToggleUnits?.(false)}
+                            className={`px-3 py-1 rounded-full text-sm border ${(widgetsSettings?.units || 'metric') === 'metric' ? 'bg-cyan-500/20 border-cyan-400 text-white' : 'bg-white/5 border-white/20 text-white/70'
+                              }`}
+                            title="Celsius"
+                          >
+                            C
+                          </button>
+                          <button
+                            onClick={() => onToggleUnits?.(true)}
+                            className={`px-3 py-1 rounded-full text-sm border ${(widgetsSettings?.units || 'metric') === 'imperial' ? 'bg-cyan-500/20 border-cyan-400 text-white' : 'bg-white/5 border-white/20 text-white/70'
+                              }`}
+                            title="Fahrenheit"
+                          >
+                            F
+                          </button>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-white/10 space-y-2">
+                        <div className="text-white text-xs font-medium">Widget surface tweaks</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                            <span className="text-white/80 text-xs">Remove outlines</span>
+                            <input
+                              type="checkbox"
+                              checked={!!widgetsSettings?.removeOutlines}
+                              onChange={(e) => onToggleWidgetsRemoveOutlines?.(e.target.checked)}
+                            />
+                          </label>
+                          <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                            <span className="text-white/80 text-xs">Remove backgrounds</span>
+                            <input
+                              type="checkbox"
+                              checked={!!widgetsSettings?.removeBackgrounds}
+                              onChange={(e) => onToggleWidgetsRemoveBackgrounds?.(e.target.checked)}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* General Widgets Settings */}
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
                       <div className="flex items-center justify-between mb-3">
                         <div>
@@ -3125,188 +4362,559 @@ const SettingsButton = ({
                           />
                         </div>
                       </div>
-                      <div className="text-white text-sm font-medium mb-2">Clock layout</div>
-                      <div className="flex gap-2">
-                        {[
-                          { id: 'preset1', label: 'Preset 1' },
-                          { id: 'preset2', label: 'Preset 2' },
-                        ].map(opt => (
-                          <button
-                            key={opt.id}
-                            onClick={() => onSelectClockPreset?.(opt.id)}
-                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${clockLayoutPreset === opt.id
-                              ? 'bg-cyan-500/20 border-cyan-400 text-white'
-                              : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                              }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="text-white/50 text-xs mt-2">Preset 2 enlarges the primary clock face and arranges sub-zones in capsules.</div>
-                    </div>
-
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium mb-2">Weather layout</div>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { id: 'preset1', label: 'Preset 1' },
-                          { id: 'preset2', label: 'Preset 2' },
-                          { id: 'preset3', label: 'Preset 3' },
-                        ].map(opt => (
-                          <button
-                            key={opt.id}
-                            onClick={() => onSelectWeatherPreset?.(opt.id)}
-                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${weatherLayoutPreset === opt.id
-                              ? 'bg-cyan-500/20 border-cyan-400 text-white'
-                              : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                              }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="text-white/50 text-xs mt-2">Preset 2 is the compact + detail variant; Preset 3 mirrors it with a flipped hero row and a tighter 7-day strip.</div>
-                    </div>
-
-                    <label className="p-3 bg-white/5 border border-white/15 rounded-lg flex items-center justify-between">
-                      <div>
-                        <div className="text-white text-sm font-medium">Clock/weather separator element</div>
-                        <div className="text-white/60 text-xs">Adds a subtle neon divider between the widgets.</div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={!!widgetsSettings?.clockWeatherSeparator}
-                        onChange={(e) => onToggleClockWeatherSeparator?.(!!e.target.checked)}
-                      />
-                    </label>
-
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
-                      <div className="text-white text-sm font-medium">Widget surface tweaks</div>
-                      <div className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-3 py-2">
-                        <div>
-                          <div className="text-white/80 text-xs font-medium uppercase tracking-wide">Remove outlines</div>
-                          <div className="text-white/60 text-[11px]">Swap borders for soft shadows across preset 2/3 layouts.</div>
-                        </div>
+                      <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                        <span className="text-white/80 text-xs">Clock/weather separator</span>
                         <input
                           type="checkbox"
-                          checked={!!widgetsSettings?.removeOutlines}
-                          onChange={(e) => onToggleWidgetsRemoveOutlines?.(e.target.checked)}
+                          checked={!!widgetsSettings?.clockWeatherSeparator}
+                          onChange={(e) => onToggleClockWeatherSeparator?.(!!e.target.checked)}
                         />
-                      </div>
-                      <div className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-3 py-2">
-                        <div>
-                          <div className="text-white/80 text-xs font-medium uppercase tracking-wide">Remove backgrounds</div>
-                          <div className="text-white/60 text-[11px]">Clear card fills, ideal for weather preset 3 or minimal themes.</div>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={!!widgetsSettings?.removeBackgrounds}
-                          onChange={(e) => onToggleWidgetsRemoveBackgrounds?.(e.target.checked)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div>
-                        <div className="text-white text-sm font-medium">Show seconds</div>
-                        <div className="text-white/60 text-xs">Display seconds in the clock.</div>
-                      </div>
-                      <label className="inline-flex items-center cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={!!(widgetsSettings?.showSeconds)}
-                          onChange={(e) => onToggleShowSeconds?.(e.target.checked)}
-                          className="peer absolute opacity-0 w-0 h-0"
-                        />
-                        <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
-                          <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
-                        </div>
                       </label>
                     </div>
 
-                    <div className="flex items-center justify-between p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div>
-                        <div className="text-white text-sm font-medium">24-hour clock</div>
-                        <div className="text-white/60 text-xs">Use 24-hour time instead of 12-hour.</div>
-                      </div>
-                      <label className="inline-flex items-center cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={!!(widgetsSettings?.twentyFourHour)}
-                          onChange={(e) => onToggleTwentyFourHour?.(e.target.checked)}
-                          className="peer absolute opacity-0 w-0 h-0"
-                        />
-                        <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
-                          <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-white text-sm font-medium">Notes widget</div>
+                          <div className="text-white/60 text-xs">Toggle the quick note pad and customize its behavior.</div>
                         </div>
-                      </label>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-white/5 border border-white/15 rounded-lg">
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={widgetsSettings?.enableNotes !== false}
+                            onChange={(e) => onToggleEnableNotes?.(!!e.target.checked)}
+                            className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
+                          />
+                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                          </div>
+                        </label>
+                      </div>
                       <div>
-                        <div className="text-white text-sm font-medium">Units</div>
-                        <div className="text-white/60 text-xs">Toggle Fahrenheit / Celsius for weather.</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => onToggleUnits?.(false)}
-                          className={`px-3 py-1 rounded-full text-sm border ${(widgetsSettings?.units || 'metric') === 'metric' ? 'bg-cyan-500/20 border-cyan-400 text-white' : 'bg-white/5 border-white/20 text-white/70'
-                            }`}
-                          title="Celsius"
-                        >
-                          C
-                        </button>
-                        <button
-                          onClick={() => onToggleUnits?.(true)}
-                          className={`px-3 py-1 rounded-full text-sm border ${(widgetsSettings?.units || 'metric') === 'imperial' ? 'bg-cyan-500/20 border-cyan-400 text-white' : 'bg-white/5 border-white/20 text-white/70'
-                            }`}
-                          title="Fahrenheit"
-                        >
-                          F
-                        </button>
+                        <div className="text-white text-sm font-medium mb-2">Note opening behavior</div>
+                        <div className="text-white/60 text-xs mb-2">Choose where notes open.</div>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { id: 'auto', label: 'Based on size' },
+                            { id: 'center', label: 'Always center column' },
+                            { id: 'widget', label: 'Always in widget' }
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              onClick={() => onSelectNotesMode?.(opt.id)}
+                              className={`px-3 py-1 rounded-full text-sm border transition-colors ${(widgetsSettings?.notesMode || 'auto') === opt.id
+                                ? 'bg-cyan-500/20 border-cyan-400 text-white'
+                                : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                                }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
-                      <div className="text-white text-sm font-medium mb-2">Sub timezones</div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {TZ_CHOICES.map(opt => {
-                          const checked = (widgetsSettings?.subTimezones || []).includes(opt.id)
-                          return (
-                            <label key={opt.id} className="flex items-center gap-2 text-white/80 text-sm">
+                    {/* Center Content Appearance - Shared settings for Notes and Email widgets */}
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-4">
+                      <div>
+                        <div className="text-white text-sm font-medium">Center Content Appearance</div>
+                        <div className="text-white/60 text-xs">Shared appearance preferences for notes and email widgets when opened in the center column.</div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px] text-white/70">
+                          <span>Background blur</span>
+                          <span className="text-white/50">
+                            {Math.round(Number(widgetsSettings?.notesBlurPx ?? 18))}px
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1.5 text-[11px] text-white/70">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={widgetsSettings?.notesBlurEnabled !== false}
+                              onChange={(e) => onToggleNotesBlurEnabled?.(!!e.target.checked)}
+                              disabled={widgetsSettings?.notesLinkSpeedDialBlur}
+                            />
+                            <span>Enable blur</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={!!widgetsSettings?.notesLinkSpeedDialBlur}
+                              onChange={(e) => onToggleNotesLinkSpeedDialBlur?.(!!e.target.checked)}
+                            />
+                            <span>Link to Speed Dial blur</span>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min={0}
+                            max={36}
+                            step={1}
+                            value={Number(widgetsSettings?.notesBlurPx ?? 18)}
+                            onChange={(e) => onChangeNotesBlurPx?.(Number(e.target.value))}
+                            disabled={
+                              widgetsSettings?.notesBlurEnabled === false ||
+                              widgetsSettings?.notesLinkSpeedDialBlur
+                            }
+                            className="flex-1 opacity-100 disabled:opacity-40"
+                          />
+                          {widgetsSettings?.notesLinkSpeedDialBlur && (
+                            <span className="text-cyan-200/70 text-[10px]">Linked</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-white/70">
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span>Remove background</span>
+                          <input
+                            type="checkbox"
+                            checked={widgetsSettings?.notesRemoveBackground !== false}
+                            onChange={(e) => onToggleNotesRemoveBackground?.(!!e.target.checked)}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span>Remove outline</span>
+                          <input
+                            type="checkbox"
+                            checked={widgetsSettings?.notesRemoveOutline !== false}
+                            onChange={(e) => onToggleNotesRemoveOutline?.(!!e.target.checked)}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span>Simple buttons</span>
+                          <input
+                            type="checkbox"
+                            checked={!!widgetsSettings?.notesSimpleButtons}
+                            onChange={(e) => onToggleNotesSimpleButtons?.(!!e.target.checked)}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span>Glow shadow</span>
+                          <input
+                            type="checkbox"
+                            checked={widgetsSettings?.notesGlowShadow !== false}
+                            onChange={(e) => onToggleNotesGlowShadow?.(!!e.target.checked)}
+                          />
+                        </label>
+                      </div>
+                      {/* Search bar push direction when center content is open */}
+                      <div className="mt-3 p-3 bg-white/5 border border-white/15 rounded-lg">
+                        <div className="text-white text-sm font-medium mb-2">Search Bar</div>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-white/80 text-xs">Push direction when center content is open</div>
+                            <div className="text-white/50 text-[10px]">Controls whether search bar moves up or down when notes/email are opened in center column</div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <label className="inline-flex items-center gap-2 cursor-pointer">
                               <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => {
-                                  const current = new Set(widgetsSettings?.subTimezones || [])
-                                  if (e.target.checked) current.add(opt.id)
-                                  else current.delete(opt.id)
-                                  onChangeSubTimezones?.(Array.from(current))
-                                }}
+                                type="radio"
+                                name="searchBarPushDirection"
+                                checked={(widgetsSettings?.searchBarPushDirection || 'down') === 'down'}
+                                onChange={() => onChangeSearchBarPushDirection?.('down')}
+                                className="cursor-pointer"
                               />
-                              <span>{opt.label}</span>
+                              <span className="text-white/80 text-xs">bottom</span>
                             </label>
-                          )
-                        })}
+                            <label className="inline-flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name="searchBarPushDirection"
+                                checked={(widgetsSettings?.searchBarPushDirection || 'down') === 'up'}
+                                onChange={() => onChangeSearchBarPushDirection?.('up')}
+                                className="cursor-pointer"
+                              />
+                              <span className="text-white/80 text-xs">Top-fixed</span>
+                            </label>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-white/50 text-xs mt-2">Local time is shown as the main clock. Selected sub timezones appear underneath.</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-white/70 mt-3">
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span>Enhanced Workspace ID</span>
+                          <input
+                            type="checkbox"
+                            checked={!!widgetsSettings?.notesEnhancedWorkspaceId}
+                            onChange={(e) => onToggleNotesEnhancedWorkspaceId?.(!!e.target.checked)}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span>Dynamic resizing</span>
+                          <input
+                            type="checkbox"
+                            checked={widgetsSettings?.notesDynamicSizing !== false}
+                            onChange={(e) => onToggleNotesDynamicSizing?.(!!e.target.checked)}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span>Auto expand on hover</span>
+                          <input
+                            type="checkbox"
+                            checked={!!widgetsSettings?.notesAutoExpandOnHover}
+                            onChange={(e) => onToggleNotesAutoExpandOnHover?.(!!e.target.checked)}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
+                          <span>Hover preview</span>
+                          <input
+                            type="checkbox"
+                            checked={!!widgetsSettings?.notesHoverPreview}
+                            onChange={(e) => onToggleNotesHoverPreview?.(!!e.target.checked)}
+                          />
+                        </label>
+                      </div>
                     </div>
 
+                    {/* Email Widget Configuration - Only show in Master Override */}
+                    {workspaceWidgetsSelectedId === null && (
+                    <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                            <div className="text-white text-sm font-medium">Email widget</div>
+                            <div className="text-white/60 text-xs">Configure Gmail accounts and associate them with workspaces. Email assignment is workspace-specific.</div>
+                        </div>
+                          <label className="inline-flex items-center cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={widgetsSettings?.enableEmail !== false}
+                              onChange={(e) => onToggleEnableEmail?.(!!e.target.checked)}
+                                  className="peer absolute opacity-0 w-0 h-0"
+                                  onFocus={handleToggleFocus}
+                                />
+                                <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                              <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                            </div>
+                          </label>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-white text-xs font-medium mb-1.5 block">Gmail OAuth Credentials</label>
+                          <div className="text-white/50 text-[10px] mb-1.5">
+                            Upload Google OAuth credentials JSON file (from Google Cloud Console) or enter Client ID manually.
+                          </div>
+                          <input
+                            ref={gmailCredentialsFileInputRef}
+                            type="file"
+                            accept=".json,application/json"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0]
+                              if (!file) return
+                              
+                              setGmailCredentialsUploadStatus('Reading file...')
+                              
+                              try {
+                                const text = await file.text()
+                                const json = JSON.parse(text)
+                                
+                                // Extract credentials from Google OAuth JSON format
+                                // Supports both "web" and "installed" (desktop app) formats
+                                const clientId = json?.web?.client_id || json?.installed?.client_id || json?.client_id
+                                const clientSecret = json?.web?.client_secret || json?.installed?.client_secret || json?.client_secret
+                                
+                                if (!clientId || !clientSecret) {
+                                  throw new Error('Invalid credentials file. Expected format: {"web": {"client_id": "...", "client_secret": "..."}}')
+                                }
+                                
+                                console.log('📧 Extracted credentials:', { clientId: clientId.substring(0, 30) + '...', hasSecret: !!clientSecret })
+                                
+                                // Update frontend (localStorage)
+                                localStorage.setItem('gmailOAuthClientId', clientId)
+                                setGmailClientIdState(clientId)
+                                
+                                // Update backend via API
+                                setGmailCredentialsUploadStatus('Updating backend...')
+                                const backendBase = (() => {
+                                  try {
+                                    const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {}
+                                    return String(env.VITE_GMAIL_API_BASE_URL || env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
+                                  } catch {
+                                    return ''
+                                  }
+                                })()
+                                const endpoint = backendBase ? `${backendBase}/gmail/credentials` : '/gmail/credentials'
+                                
+                                console.log('📤 Sending credentials to backend:', endpoint)
+                                const response = await fetch(endpoint, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+                                })
+                                
+                                if (response.ok) {
+                                  const result = await response.json()
+                                  console.log('✅ Backend updated:', result)
+                                  setGmailCredentialsUploadStatus('✅ Credentials updated successfully! Frontend and backend are now configured.')
+                                  setTimeout(() => setGmailCredentialsUploadStatus(''), 5000)
+                                } else {
+                                  const errorText = await response.text()
+                                  console.error('❌ Backend update failed:', errorText)
+                                  throw new Error(`Backend update failed: ${errorText}`)
+                                }
+                              } catch (err) {
+                                console.error('❌ Credentials upload error:', err)
+                                setGmailCredentialsUploadStatus(`❌ Error: ${err.message}`)
+                                setTimeout(() => setGmailCredentialsUploadStatus(''), 8000)
+                              }
+                              
+                              // Reset file input
+                              e.target.value = ''
+                            }}
+                          />
+                          <div className="flex gap-2 mb-2">
+                            <button
+                              type="button"
+                              onClick={() => gmailCredentialsFileInputRef.current?.click()}
+                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-cyan-500/30 hover:bg-cyan-500/40 border border-cyan-400/60 rounded-md text-white text-xs font-medium transition-colors"
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                              Upload Credentials JSON
+                            </button>
+                          </div>
+                          {gmailCredentialsUploadStatus && (
+                            <div className={`text-[10px] p-2 rounded ${gmailCredentialsUploadStatus.startsWith('✅') ? 'bg-green-500/20 text-green-300 border border-green-500/30' : gmailCredentialsUploadStatus.startsWith('❌') ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 'bg-white/10 text-white/70 border border-white/20'}`}>
+                              {gmailCredentialsUploadStatus}
+                            </div>
+                          )}
+                          <div className="mt-3 pt-3 border-t border-white/10">
+                            <label className="text-white text-xs font-medium mb-1.5 block">Or enter Client ID manually:</label>
+                            <input
+                              type="text"
+                              value={gmailClientIdState}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                setGmailClientIdState(value)
+                              }}
+                              onBlur={(e) => {
+                                try {
+                                  const value = e.target.value.trim()
+                                  if (value) {
+                                    localStorage.setItem('gmailOAuthClientId', value)
+                                    setGmailClientIdState(value)
+                                  } else {
+                                    localStorage.removeItem('gmailOAuthClientId')
+                                    setGmailClientIdState('')
+                                  }
+                                } catch {}
+                              }}
+                              placeholder="e.g., 123456789-abc.apps.googleusercontent.com"
+                              className="w-full bg-white/10 text-white/80 text-xs rounded-md border border-white/20 px-3 py-2 focus:outline-none focus:border-white/40 placeholder:text-white/30"
+                            />
+                            <div className="text-white/40 text-[9px] mt-1">
+                              {(() => {
+                                try {
+                                  const envId = typeof import.meta !== 'undefined' && import.meta.env?.VITE_GMAIL_CLIENT_ID
+                                  if (envId && gmailClientIdState === envId.trim()) {
+                                    return '✓ Loaded from environment (.env.local)'
+                                  }
+                                  if (gmailClientIdState) {
+                                    return '✓ Client ID configured'
+                                  }
+                                  return ''
+                                } catch {
+                                  return ''
+                                }
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mb-4 p-3 bg-white/5 border border-white/10 rounded">
+                          <label className="flex items-center justify-between cursor-pointer select-none">
+                            <div className="flex flex-col">
+                              <span className="text-white/80 text-xs font-medium">Auto-load and cache emails</span>
+                              <span className="text-white/50 text-[10px] mt-0.5">Automatically load and cache emails in the background for faster access</span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={widgetsSettings?.emailAutoLoad !== false}
+                              onChange={(e) => {
+                                const newValue = !!e.target.checked
+                                try {
+                                  // Update localStorage directly - App.jsx will pick it up via useEffect
+                                  const current = JSON.parse(localStorage.getItem('widgetsSettings') || '{}')
+                                  const updated = { ...current, emailAutoLoad: newValue }
+                                  localStorage.setItem('widgetsSettings', JSON.stringify(updated))
+                                  // Trigger a custom event to notify App.jsx to reload settings
+                                  window.dispatchEvent(new CustomEvent('widgetsSettingsChanged', { detail: updated }))
+                                } catch (err) {
+                                  console.error('Failed to update emailAutoLoad setting:', err)
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <div className="text-white text-xs font-medium mb-2">Configure Email Accounts</div>
+                        <div className="space-y-2">
+                          {emailAccounts.map((account, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-2 p-2 bg-white/5 border border-white/10 rounded cursor-pointer hover:bg-white/10 transition-colors"
+                              onClick={(e) => {
+                                // Don't open menu if clicking the Remove button
+                                if (e.target.closest('button')) return
+                                e.preventDefault()
+                                e.stopPropagation()
+                                console.log('📧 Email account clicked, opening menu for:', account.email)
+                                // Position menu below the clicked item
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                setEmailAccountContextMenu({
+                                  x: rect.left + rect.width / 2,
+                                  y: rect.bottom + 4,
+                                  account
+                                })
+                                console.log('📧 Menu state set:', { x: rect.left + rect.width / 2, y: rect.bottom + 4 })
+                              }}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="text-white/90 text-xs font-medium truncate">{account.email || 'Unnamed account'}</div>
+                                {account.workspaceId ? (
+                                  <div className="text-white/50 text-[10px] mt-0.5">
+                                    Workspace: {workspaces.find(w => w.id === account.workspaceId)?.name || account.workspaceId}
+                                  </div>
+                                ) : (
+                                  <div className="text-white/40 text-[10px] mt-0.5 italic">
+                                    Click to assign workspace
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  e.preventDefault()
+                                  onRemoveEmailAccount?.(account)
+                                }}
+                                className="px-2 py-1 text-xs rounded bg-red-500/20 hover:bg-red-500/30 border border-red-400/40 text-white/80"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // Get Client ID from state, localStorage, or env - try all sources
+                                  const getClientId = () => {
+                                    // Try state first
+                                    if (gmailClientIdState && gmailClientIdState.trim()) {
+                                      return gmailClientIdState.trim()
+                                    }
+                                    // Try localStorage
+                                    try {
+                                      const stored = localStorage.getItem('gmailOAuthClientId')
+                                      if (stored && stored.trim()) {
+                                        setGmailClientIdState(stored.trim())
+                                        return stored.trim()
+                                      }
+                                    } catch {}
+                                    // Try environment variable
+                                    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GMAIL_CLIENT_ID) {
+                                      const envId = import.meta.env.VITE_GMAIL_CLIENT_ID.trim()
+                                      if (envId) {
+                                        localStorage.setItem('gmailOAuthClientId', envId)
+                                        setGmailClientIdState(envId)
+                                        return envId
+                                      }
+                                    }
+                                    return null
+                                  }
+                                  
+                                  const clientIdValue = getClientId()
+                                  
+                                  if (!clientIdValue) {
+                                    // Try one more time to get from env
+                                    console.warn('⚠️ Gmail Client ID not found. Trying to load from environment...')
+                                    console.log('Environment check:', {
+                                      hasEnv: !!(typeof import.meta !== 'undefined' && import.meta.env?.VITE_GMAIL_CLIENT_ID),
+                                      envValue: typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GMAIL_CLIENT_ID : 'N/A',
+                                      localStorage: localStorage.getItem('gmailOAuthClientId'),
+                                      state: gmailClientIdState
+                                    })
+                                    alert('Gmail Client ID not configured.\n\nPlease:\n1. Enter it in the field above, OR\n2. Restart your dev server if using .env.local\n\nThe Client ID should appear automatically after restart.')
+                                    return
+                                  }
+                                  
+                                  console.log('🚀 Opening Gmail OAuth with Client ID:', clientIdValue.substring(0, 30) + '...')
+                                  
+                                  // Generate state parameter for security
+                                  const state = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+                                  localStorage.setItem('gmail_oauth_state', state)
+                                  
+                                  // Build OAuth URL
+                                  const redirectUri = `${window.location.origin}/gmail-oauth-callback`
+                                  const scope = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile'
+                                  
+                                  // Log the scope being requested for debugging
+                                  console.log('🔐 Gmail OAuth - Requesting scopes:', scope)
+                                  console.log('🔐 Gmail OAuth - Scopes include gmail.send:', scope.includes('gmail.send'))
+                                  
+                                  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+                                    `client_id=${encodeURIComponent(clientIdValue)}&` +
+                                    `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+                                    `response_type=code&` +
+                                    `scope=${encodeURIComponent(scope)}&` +
+                                    `access_type=offline&` +
+                                    `prompt=consent&` +
+                                    `state=${encodeURIComponent(state)}`
+                                  
+                                  console.log('🔗 Gmail OAuth URL:', authUrl.replace(/state=[^&]+/, 'state=***'))
+                                  
+                                  // Open OAuth in a popup
+                                  const width = 500
+                                  const height = 600
+                                  const left = (window.screen.width - width) / 2
+                                  const top = (window.screen.height - height) / 2
+                                  
+                                  const popup = window.open(
+                                    authUrl,
+                                    'Gmail Authentication',
+                                    `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+                                  )
+                                  
+                                  if (!popup) {
+                                    alert('Popup blocked. Please allow popups for this site and try again.')
+                                  }
+                                }}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-cyan-500/30 hover:bg-cyan-500/40 border border-cyan-400/60 rounded-md text-white text-sm font-medium transition-colors"
+                              >
+                                <Mail className="w-4 h-4" />
+                                Sign in with Gmail
+                              </button>
+                        <div className="text-white/50 text-[10px]">Each Gmail account can be associated with a specific workspace. Use the dropdown in the email widget to filter by workspace.</div>
+                      </div>
+                    </div>
+                    )}
+
+                    {/* Music backend - Only show in Master Override */}
+                    {workspaceWidgetsSelectedId === null && (
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex flex-col gap-1">
                           <div className="text-white text-sm font-medium">Music backend</div>
                           <div className="text-white/60 text-xs">
-                            Controls the music player widget. When disabled, the music player is hidden from the widgets column.
+                              Controls the music player widget. When disabled, the music player is hidden from the widgets column. Music backend is universal across all profiles (only appearance is per-profile).
                           </div>
                         </div>
-                        <label className="inline-flex items-center cursor-pointer select-none">
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
                           <input
                             type="checkbox"
                             checked={widgetsSettings?.enableMusicPlayer !== false}
                             onChange={(e) => onToggleEnableMusicPlayer?.(!!e.target.checked)}
                             className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
                           />
                           <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
                             <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
@@ -3338,7 +4946,10 @@ const SettingsButton = ({
                         />
                       </div>
                     </div>
+                    )}
 
+                    {/* Music player styling - Only show in Master Override */}
+                    {workspaceWidgetsSelectedId === null && (
                     <div className="p-3 bg-white/5 border border-white/15 rounded-lg">
                       <div className="text-white text-sm font-medium mb-2">Music player styling</div>
                       <div className="flex items-center justify-between gap-2 mb-2">
@@ -3351,21 +4962,36 @@ const SettingsButton = ({
                             step="1"
                             value={Number(musicCfg.blurPx ?? 12)}
                             onChange={(e) => onChangeMusicBlurPx?.(Number(e.target.value))}
-                            className="w-28"
+                            className="w-28 disabled:opacity-40"
                             title="Music player background blur (px)"
+                            disabled={!!musicCfg.linkSpeedDialBlur}
                           />
                         </div>
-                        <span className="text-white/50 text-[11px]">{Number(musicCfg.blurPx ?? 12)}px</span>
+                        <span className="text-white/50 text-[11px]">
+                          {musicCfg.linkSpeedDialBlur ? 'Linked' : `${Number(musicCfg.blurPx ?? 12)}px`}
+                        </span>
                       </div>
-                      <label className="mt-1 p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
+                      <label className={`mt-1 p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between ${musicCfg.linkSpeedDialBlur ? 'opacity-60' : ''}`}>
                         <span className="text-white/80 text-xs">Match blur to search bar</span>
                         <input
                           type="checkbox"
                           checked={!!musicCfg.matchSearchBarBlur}
                           onChange={(e) => onToggleMusicMatchSearchBarBlur?.(!!e.target.checked)}
+                          disabled={!!musicCfg.linkSpeedDialBlur}
                         />
                       </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <label className="mt-1 p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-white/80 text-xs">Link blur to Speed Dial</span>
+                          <span className="text-white/40 text-[10px]">Follows per-workspace Speed Dial blur and disables manual control.</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!musicCfg.linkSpeedDialBlur}
+                          onChange={(e) => onToggleMusicLinkSpeedDialBlur?.(!!e.target.checked)}
+                        />
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                         <label className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
                           <span className="text-white/80 text-xs">Remove background</span>
                           <input type="checkbox" checked={!!musicCfg.removeBackground} onChange={(e) => onToggleMusicRemoveBackground?.(!!e.target.checked)} />
@@ -3378,6 +5004,10 @@ const SettingsButton = ({
                           <span className="text-white/80 text-xs">Use shadows</span>
                           <input type="checkbox" checked={musicCfg.useShadows !== false} onChange={(e) => onToggleMusicUseShadows?.(!!e.target.checked)} />
                         </label>
+                        <label className="p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
+                          <span className="text-white/80 text-xs">Glow shadow</span>
+                          <input type="checkbox" checked={musicCfg.glowShadow !== false} onChange={(e) => onToggleMusicGlowShadow?.(!!e.target.checked)} />
+                        </label>
                       </div>
                       <label className="mt-2 p-2 bg-white/5 border border-white/10 rounded flex items-center justify-between">
                         <span className="text-white/80 text-xs">Match text color to workspace coloring</span>
@@ -3389,6 +5019,7 @@ const SettingsButton = ({
                       </label>
                       <div className="text-white/50 text-[11px] mt-1">Buttons will be transparent but still react to hover on play, pause, etc.</div>
                     </div>
+                    )}
 
                     {/* Preset 2 Styling controls removed as requested */}
 
@@ -3676,6 +5307,87 @@ const SettingsButton = ({
           </motion.div>
         )}
       </AnimatePresence>
+      
+      {/* Gmail OAuth Authentication Modal */}
+      <GmailAuthModal
+        open={showGmailAuthModal}
+        onClose={() => setShowGmailAuthModal(false)}
+        onSuccess={(accountData) => {
+          onAddEmailAccount?.(accountData)
+          setShowGmailAuthModal(false)
+        }}
+        onError={(error) => {
+          console.error('Gmail OAuth error:', error)
+        }}
+        workspaces={workspaces}
+        clientId={gmailClientIdState || (() => {
+          try {
+            // Fallback to environment variable if state is empty
+            if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GMAIL_CLIENT_ID) {
+              return import.meta.env.VITE_GMAIL_CLIENT_ID
+            }
+            return null
+          } catch {
+            return null
+          }
+        })()}
+      />
+
+      {/* Email Account Context Menu - Render in portal to ensure it's above settings modal */}
+      {emailAccountContextMenu && typeof document !== 'undefined' && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[20001]"
+            onClick={() => setEmailAccountContextMenu(null)}
+          />
+          <div
+            className="fixed z-[20002] bg-black/95 border border-white/20 rounded-lg shadow-xl py-1 min-w-[180px]"
+            style={{
+              left: `${Math.min(emailAccountContextMenu.x - 90, window.innerWidth - 200)}px`,
+              top: `${Math.min(emailAccountContextMenu.y, window.innerHeight - 300)}px`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-white/70 text-[10px] px-3 py-1.5 border-b border-white/10">
+              Assign to workspace
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onUpdateEmailAccountWorkspace?.(emailAccountContextMenu.account, null)
+                setEmailAccountContextMenu(null)
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span>None (unassigned)</span>
+                {!emailAccountContextMenu.account.workspaceId && (
+                  <span className="text-[10px] text-white/50">✓</span>
+                )}
+              </div>
+            </button>
+            {workspaces.map((ws) => (
+              <button
+                key={ws.id}
+                type="button"
+                onClick={() => {
+                  onUpdateEmailAccountWorkspace?.(emailAccountContextMenu.account, ws.id)
+                  setEmailAccountContextMenu(null)
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span>{ws.name || ws.id}</span>
+                  {emailAccountContextMenu.account.workspaceId === ws.id && (
+                    <span className="text-[10px] text-white/50">✓</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body
+      )}
     </>
   )
 }

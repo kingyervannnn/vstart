@@ -5,11 +5,16 @@ import WorkspaceStrip from "./components/WorkspaceStrip";
 import SearchBox from "./components/SearchBox";
 import ClockWidget from "./components/ClockWidget";
 import WeatherWidget from "./components/WeatherWidget";
+import NotesWidget from "./components/NotesWidget";
+import NotesOverlay from "./components/NotesOverlay";
+import EmailOverlay from "./components/EmailOverlay";
+import EmailWidget from "./components/EmailWidget";
 import MusicController from "./components/MusicController";
 import SettingsButton from "./components/SettingsButton";
 import BackgroundRenderer from "./components/BackgroundRenderer";
 import IconThemeFilters from "./components/IconThemeFilters";
 import ErrorBoundary from "./components/ErrorBoundary";
+import GmailOAuthCallback from "./pages/GmailOAuthCallback";
 import {
   getBackgroundURLById,
   getBackgroundRecordById,
@@ -26,6 +31,11 @@ import {
   getNormalizedPath,
 } from "./lib/workspace-switching";
 import { setSettingsOpen, isSettingsOpen } from "./lib/settings-visibility";
+import {
+  loadNotesFromVault,
+  saveNoteToVault,
+  deleteNoteFromVault,
+} from "./lib/notes-sync";
 
 // Import background assets
 import themeGif2 from "./assets/theme_2.gif";
@@ -53,6 +63,54 @@ const slugifyWorkspaceName = (name) => {
   } catch {
     return "workspace";
   }
+};
+
+const getWorkspaceFolderName = (workspaceId, workspaces) => {
+  if (!workspaceId) return "";
+  const list = Array.isArray(workspaces) ? workspaces : [];
+  const ws =
+    list.find((w) => w.id === workspaceId) ||
+    null;
+  const base = ws?.name || ws?.id || "workspace";
+  const slug = slugifyWorkspaceName(base);
+  return slug || "";
+};
+
+const normalizeVaultNotes = (rawNotes, workspaces) => {
+  if (!Array.isArray(rawNotes) || !rawNotes.length) return [];
+  const list = Array.isArray(workspaces) ? workspaces : [];
+  const slugIndex = new Map();
+  list.forEach((ws) => {
+    const slug = getWorkspaceFolderName(ws.id, list);
+    if (slug) {
+      slugIndex.set(slug, ws.id);
+    }
+  });
+  return rawNotes.map((note) => {
+    const folderRaw =
+      note && typeof note.folder === "string" ? note.folder.trim() : "";
+    const folder = folderRaw || "";
+    let workspaceId = note.workspaceId || null;
+    if (!workspaceId && folder && folder !== "unassigned") {
+      const matchId = slugIndex.get(folder);
+      if (matchId) {
+        workspaceId = matchId;
+      }
+    }
+    let nextFolder = folder;
+    if (!nextFolder && workspaceId) {
+      const slug = getWorkspaceFolderName(workspaceId, list);
+      nextFolder = slug || "";
+    }
+    if (!nextFolder && !workspaceId && folder === "unassigned") {
+      nextFolder = "unassigned";
+    }
+    return {
+      ...note,
+      workspaceId,
+      folder: nextFolder,
+    };
+  });
 };
 
 const isDataUrl = (value) => typeof value === "string" && /^data:/i.test(value);
@@ -133,6 +191,7 @@ const BUILTIN_GIF_PLACEHOLDERS_BY_META = {
 
 const DEFAULT_APPEARANCE_WORKSPACE_ID = "default";
 const MASTER_APPEARANCE_ID = "master";
+const MASTER_WIDGETS_ID = "master";
 
 const normalizeAppearanceWorkspaceState = (raw) => {
   const enabled = !!raw?.enabled;
@@ -143,27 +202,76 @@ const normalizeAppearanceWorkspaceState = (raw) => {
   const lastSelectedId =
     typeof raw?.lastSelectedId === "string" && raw.lastSelectedId
       ? raw.lastSelectedId
-      : DEFAULT_APPEARANCE_WORKSPACE_ID;
+      : MASTER_APPEARANCE_ID;
   return { enabled, overrides, lastSelectedId };
+};
+
+const normalizeWorkspaceWidgetsState = (raw) => {
+  const enabled = !!raw?.enabled;
+  const overrides =
+    raw && typeof raw.overrides === "object" && raw.overrides
+      ? raw.overrides
+      : {};
+  const lastSelectedId =
+    typeof raw?.lastSelectedId === "string" && raw.lastSelectedId
+      ? raw.lastSelectedId
+      : MASTER_WIDGETS_ID;
+  return { enabled, overrides, lastSelectedId };
+};
+
+const resolveWorkspaceWidgetsTargetId = (
+  state,
+  requestedId,
+) => {
+  if (!state?.enabled) return MASTER_WIDGETS_ID;
+  if (requestedId === MASTER_WIDGETS_ID) return MASTER_WIDGETS_ID;
+  const normalized =
+    typeof requestedId === "string" && requestedId
+      ? requestedId
+      : MASTER_WIDGETS_ID;
+  return normalized;
+};
+
+const resolveWorkspaceWidgetsProfile = (
+  baseWidgets,
+  state,
+  workspaceId,
+) => {
+  const masterOverride = state?.overrides?.[MASTER_WIDGETS_ID] || null;
+  if (!state?.enabled) {
+    // When workspace widgets are disabled, force everything to use
+    // a single widgets profile: base widgets + master override (if exists).
+    // Ignore all workspace-specific overrides.
+    return masterOverride
+      ? { ...baseWidgets, ...masterOverride }
+      : baseWidgets;
+  }
+  const overrides = state?.overrides || {};
+  if (workspaceId === MASTER_WIDGETS_ID) {
+    return masterOverride || baseWidgets;
+  }
+  const baseEffective = masterOverride ? { ...baseWidgets, ...masterOverride } : baseWidgets;
+  if (!workspaceId || workspaceId === MASTER_WIDGETS_ID) {
+    return baseEffective;
+  }
+  if (overrides[workspaceId]) {
+    return { ...baseEffective, ...overrides[workspaceId] };
+  }
+  return baseEffective;
 };
 
 const resolveAppearanceWorkspaceTargetId = (
   state,
   requestedId,
-  anchoredWorkspaceId,
+  anchoredWorkspaceId, // Kept for backward compatibility but not used for appearance workspaces
 ) => {
-  if (!state?.enabled) return DEFAULT_APPEARANCE_WORKSPACE_ID;
+  if (!state?.enabled) return MASTER_APPEARANCE_ID;
   if (requestedId === MASTER_APPEARANCE_ID) return MASTER_APPEARANCE_ID;
   const normalized =
     typeof requestedId === "string" && requestedId
       ? requestedId
-      : DEFAULT_APPEARANCE_WORKSPACE_ID;
-  if (
-    normalized === DEFAULT_APPEARANCE_WORKSPACE_ID ||
-    (anchoredWorkspaceId && normalized === anchoredWorkspaceId)
-  ) {
-    return DEFAULT_APPEARANCE_WORKSPACE_ID;
-  }
+      : MASTER_APPEARANCE_ID;
+  // No default workspace - only master override and individual workspaces
   return normalized;
 };
 
@@ -208,29 +316,54 @@ const getAppearanceDiff = (base, target) => {
   return diff;
 };
 
+const deepRemoveKeys = (target, keys) => {
+  if (!target || typeof target !== 'object' || !keys || typeof keys !== 'object') return target;
+  const next = { ...target };
+  let changed = false;
+  for (const key in keys) {
+    if (keys[key] && typeof keys[key] === 'object' && !Array.isArray(keys[key])) {
+      if (next[key]) {
+        const nextVal = deepRemoveKeys(next[key], keys[key]);
+        if (nextVal !== next[key]) {
+          next[key] = nextVal;
+          changed = true;
+          if (Object.keys(next[key]).length === 0) {
+            delete next[key];
+          }
+        }
+      }
+    } else {
+      if (key in next) {
+        delete next[key];
+        changed = true;
+      }
+    }
+  }
+  return changed ? next : target;
+};
+
 const resolveAppearanceProfileForWorkspace = (
   baseAppearance,
   state,
   workspaceId,
   anchoredWorkspaceId,
 ) => {
-  if (!state?.enabled) return baseAppearance;
   const masterOverride = state?.overrides?.[MASTER_APPEARANCE_ID] || null;
+  if (!state?.enabled) {
+    // When appearance workspaces are disabled, force everything to use
+    // a single appearance profile: base appearance + master override (if exists).
+    // Ignore all workspace-specific overrides.
+    return masterOverride
+      ? deepMergeAppearance(baseAppearance, masterOverride)
+      : baseAppearance;
+  }
   const overrides = state?.overrides || {};
   if (workspaceId === MASTER_APPEARANCE_ID) {
     return masterOverride || baseAppearance;
   }
   const baseEffective = masterOverride ? deepMergeAppearance(baseAppearance, masterOverride) : baseAppearance;
-  if (
-    !workspaceId ||
-    workspaceId === DEFAULT_APPEARANCE_WORKSPACE_ID ||
-    (anchoredWorkspaceId && workspaceId === anchoredWorkspaceId)
-  ) {
-    // For default/anchored workspaces, deep merge default override on top of master override
-    const defaultOverride = overrides[DEFAULT_APPEARANCE_WORKSPACE_ID];
-    if (defaultOverride) {
-      return deepMergeAppearance(baseEffective, defaultOverride);
-    }
+  // No default workspace - only master override and individual workspaces
+  if (!workspaceId || workspaceId === MASTER_APPEARANCE_ID) {
     return baseEffective;
   }
   if (overrides[workspaceId]) {
@@ -240,6 +373,12 @@ const resolveAppearanceProfileForWorkspace = (
 };
 
 function App() {
+  // Handle Gmail OAuth callback route
+  const isOAuthCallback = typeof window !== 'undefined' && window.location.pathname === '/gmail-oauth-callback'
+  if (isOAuthCallback) {
+    return <GmailOAuthCallback />
+  }
+
   const [mounted, setMounted] = useState(false);
   // Compensate for browser zoom changes across displays
   const [uiScale, setUiScale] = useState(1);
@@ -255,7 +394,39 @@ function App() {
   const globalBackgroundObjectUrlRef = useRef(null);
   const [workspaceBackgrounds, setWorkspaceBackgrounds] = useState({});
   const workspaceBackgroundsRef = useRef({});
+  const [selectedWorkspaceForZoom, setSelectedWorkspaceForZoom] = useState(null);
+  const backgroundAbortControllersRef = useRef(new Map());
+  const lastAppliedBackgroundRef = useRef({ workspaceId: null, src: null });
+  const workspaceBackgroundsRestoredRef = useRef(false);
+  const [workspaceBackgroundsRestored, setWorkspaceBackgroundsRestored] = useState(false);
   const searchBoxRef = useRef(null);
+  const seededNotesRef = useRef(false);
+  const [notesInlineEditing, setNotesInlineEditing] = useState(false);
+  const [notesCenterNoteId, setNotesCenterNoteId] = useState(null);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [emailsCenterOpen, setEmailsCenterOpen] = useState(false);
+  const [emailCenterEmailId, setEmailCenterEmailId] = useState(null);
+  const [emailCenterEmailAccount, setEmailCenterEmailAccount] = useState(null);
+  // Widget alternator: 'none' (use settings), 'notes-only', 'email-only'
+  const [widgetAlternatorMode, setWidgetAlternatorMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem("vstart-widget-alternator-mode");
+      return saved || 'none';
+    } catch {
+      return 'none';
+    }
+  });
+  const [emailAccounts, setEmailAccounts] = useState(() => {
+    try {
+      const saved = localStorage.getItem("vivaldi-email-accounts");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const notesEditingIdRef = useRef(null);
+  const [notesHoverPreviewId, setNotesHoverPreviewId] = useState(null);
+  const [notesActiveFolder, setNotesActiveFolder] = useState("");
   const [settings, setSettings] = useState({
     ai: {
       enabled: true,
@@ -363,7 +534,39 @@ function App() {
       units: "imperial", // 'metric' (°C) | 'imperial' (°F)
       clockPreset: "preset2", // 'preset1' | 'preset2'
       weatherPreset: "preset3", // 'preset1' | 'preset2' | 'preset3'
+      weatherShowDetailsOnHover: true,
+      enableClock: true,
+      enableWeather: true,
+      enableNotes: true,
       enableMusicPlayer: false,
+      notesMode: "auto", // 'auto' | 'widget' | 'center'
+      notesEntries: [],
+      notesActiveId: null,
+      notesContent: "",
+      notesListStyle: "pill",
+      notesFilterMode: "all",
+      notesFilterWorkspaceId: null,
+      emailCenterFilterMode: "all",
+      emailCenterFilterWorkspaceId: null,
+      showWorkspaceEmailListInsteadOfNotes: false,
+      notesBlurEnabled: true,
+      notesBlurPx: 18,
+      notesLinkSpeedDialBlur: false,
+      searchBarLinkSpeedDialBlur: false,
+      notesDynamicBackground: true,
+      notesHoverPreview: false,
+      notesDynamicSizing: true,
+      notesVault: "",
+      notesVaults: [],
+      notesVaultActiveId: "default",
+      notesPinnedFolder: "",
+      notesAutoExpandOnHover: false,
+      notesRemoveBackground: true,
+      notesRemoveOutline: true,
+      searchBarPushDirection: "down", // 'up' | 'down' - when center content is open
+      notesSimpleButtons: false,
+      notesGlowShadow: true,
+      notesEnhancedWorkspaceId: false,
       subTimezones: ["Asia/Yerevan", "Europe/Vienna"],
       fontPreset: "industrial",
       colorPrimary: "#ffffff",
@@ -383,6 +586,7 @@ function App() {
     appearance: {
       masterLayout: "modern",
       animatedOverlay: false,
+      animatedOverlaySpeed: 2,
       mirrorLayout: true,
       swapClassicTabsWithPageSwitcher: false,
       swapModernTabsWithPageSwitcher: false,
@@ -399,6 +603,7 @@ function App() {
         removeOutline: true,
         useShadows: true,
         blurPx: 28,
+        linkSpeedDialBlur: false,
         matchWorkspaceTextColor: true,
         matchSearchBarBlur: true,
         disableButtonBackgrounds: false,
@@ -454,6 +659,11 @@ function App() {
       overrides: {},
       lastSelectedId: DEFAULT_APPEARANCE_WORKSPACE_ID,
     },
+    workspaceWidgets: {
+      enabled: false,
+      overrides: {},
+      lastSelectedId: MASTER_WIDGETS_ID,
+    },
     search: {
       engine: "google",
       suggestProvider: "searxng",
@@ -475,6 +685,9 @@ function App() {
       scrollToChangeWorkspaceIncludeWholeColumn: false,
       scrollToChangeWorkspaceResistance: false,
       scrollToChangeWorkspaceResistanceIntensity: 100,
+      shortcuts: {
+        focusSearchbar: 'x Space'
+      },
       // Use same-origin proxy to avoid private network preflight issues
       musicBackend: "/music/api/v1",
       voice: {
@@ -521,6 +734,7 @@ function App() {
             linkWorkspaceOpacity: false,
             linkWorkspaceGrayscale: false,
             workspaces: {},
+            followSlug: true,
           };
           return { ...defaults, ...parsed };
         }
@@ -534,6 +748,7 @@ function App() {
         linkWorkspaceOpacity: false,
         linkWorkspaceGrayscale: false,
         workspaces: {}, // { [workspaceId]: { mode, color, opacity, grayscaleIntensity } }
+        followSlug: true,
       };
     })(),
     license: {
@@ -578,6 +793,11 @@ function App() {
     [persistWorkspaceBackgroundMeta],
   );
 
+  // Keep ref in sync with state (important for fast workspace switching)
+  useEffect(() => {
+    workspaceBackgroundsRef.current = workspaceBackgrounds;
+  }, [workspaceBackgrounds]);
+
   const resolveBackgroundSource = useCallback(async (meta) => {
     if (!meta) return null;
     const type = String(meta.type || "").toLowerCase();
@@ -602,6 +822,18 @@ function App() {
   const setWorkspaceBackgroundMeta = useCallback(
     async (workspaceId, meta, hintUrl) => {
       if (!workspaceId) return;
+      
+      // Cancel any pending background loading for this workspace
+      const existingController = backgroundAbortControllersRef.current.get(workspaceId);
+      if (existingController) {
+        existingController.abort();
+        backgroundAbortControllersRef.current.delete(workspaceId);
+      }
+
+      // Create new AbortController for this request
+      const abortController = new AbortController();
+      backgroundAbortControllersRef.current.set(workspaceId, abortController);
+
       if (!meta) {
         updateWorkspaceBackgroundState((prev) => {
           if (!prev[workspaceId]) return prev;
@@ -615,6 +847,7 @@ function App() {
           delete next[workspaceId];
           return next;
         });
+        backgroundAbortControllersRef.current.delete(workspaceId);
         return;
       }
 
@@ -622,12 +855,41 @@ function App() {
       let src = hintUrl || null;
 
       if (!src) {
-        const resolved = await resolveBackgroundSource(resolvedMeta);
-        if (!resolved) {
-          resolvedMeta = null;
-        } else {
-          src = resolved;
+        try {
+          const resolved = await resolveBackgroundSource(resolvedMeta);
+          // Check if request was aborted
+          if (abortController.signal.aborted) {
+            if (resolved && resolved.startsWith('blob:')) {
+              try {
+                URL.revokeObjectURL(resolved);
+              } catch { }
+            }
+            return;
+          }
+          if (!resolved) {
+            resolvedMeta = null;
+          } else {
+            src = resolved;
+          }
+        } catch (error) {
+          // If aborted, clean up and return
+          if (abortController.signal.aborted) {
+            backgroundAbortControllersRef.current.delete(workspaceId);
+            return;
+          }
+          throw error;
         }
+      }
+      
+      // Check if request was aborted before updating state
+      if (abortController.signal.aborted) {
+        if (src && src.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(src);
+          } catch { }
+        }
+        backgroundAbortControllersRef.current.delete(workspaceId);
+        return;
       }
 
       if (!resolvedMeta || !src) {
@@ -648,11 +910,23 @@ function App() {
           delete next[workspaceId];
           return next;
         });
+        backgroundAbortControllersRef.current.delete(workspaceId);
         return;
       }
 
       if (resolvedMeta.type !== "custom" && !resolvedMeta.url) {
         resolvedMeta = { ...resolvedMeta, url: src };
+      }
+
+      // Final check if aborted before state update
+      if (abortController.signal.aborted) {
+        if (src && src.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(src);
+          } catch { }
+        }
+        backgroundAbortControllersRef.current.delete(workspaceId);
+        return;
       }
 
       updateWorkspaceBackgroundState((prev) => {
@@ -670,6 +944,9 @@ function App() {
         next[workspaceId] = { meta: resolvedMeta, src };
         return next;
       });
+      
+      // Clean up controller after successful update
+      backgroundAbortControllersRef.current.delete(workspaceId);
     },
     [resolveBackgroundSource, updateWorkspaceBackgroundState],
   );
@@ -677,11 +954,21 @@ function App() {
   // Restore workspace backgrounds from localStorage
   useEffect(() => {
     const raw = localStorage.getItem("vivaldi-workspace-backgrounds");
-    if (!raw) return;
+    workspaceBackgroundsRestoredRef.current = false;
+    setWorkspaceBackgroundsRestored(false);
+    if (!raw) {
+      workspaceBackgroundsRestoredRef.current = true;
+      setWorkspaceBackgroundsRestored(true);
+      return;
+    }
     (async () => {
       try {
         const metaMap = JSON.parse(raw);
-        if (!metaMap || typeof metaMap !== "object") return;
+        if (!metaMap || typeof metaMap !== "object") {
+          workspaceBackgroundsRestoredRef.current = true;
+          setWorkspaceBackgroundsRestored(true);
+          return;
+        }
         let metaMapUpdated = false;
         // Enrich meta with mime type from IndexedDB if missing
         for (const [id, meta] of Object.entries(metaMap)) {
@@ -702,12 +989,20 @@ function App() {
           } catch { }
         }
         // Restore all workspace backgrounds
+        const restorePromises = [];
         for (const [id, meta] of Object.entries(metaMap)) {
           if (meta) {
-            setWorkspaceBackgroundMeta(id, meta).catch(() => { });
+            restorePromises.push(setWorkspaceBackgroundMeta(id, meta).catch(() => { }));
           }
         }
-      } catch { }
+        // Wait for all restorations to complete
+        await Promise.all(restorePromises);
+        workspaceBackgroundsRestoredRef.current = true;
+        setWorkspaceBackgroundsRestored(true);
+      } catch {
+        workspaceBackgroundsRestoredRef.current = true;
+        setWorkspaceBackgroundsRestored(true);
+      }
     })();
   }, [setWorkspaceBackgroundMeta]);
 
@@ -740,6 +1035,18 @@ function App() {
   // Load Widgets settings from localStorage on mount (if present)
   useEffect(() => {
     try {
+      // Listen for widgetsSettings changes from SettingsButton
+      const handleWidgetsSettingsChange = (e) => {
+        try {
+          const updated = e.detail || JSON.parse(localStorage.getItem('widgetsSettings') || '{}')
+          setSettings((prev) => ({
+            ...prev,
+            widgets: { ...(prev.widgets || {}), ...updated }
+          }))
+        } catch {}
+      }
+      window.addEventListener('widgetsSettingsChanged', handleWidgetsSettingsChange)
+      
       const raw = localStorage.getItem("widgetsSettings");
       if (raw) {
         const parsed = JSON.parse(raw);
@@ -750,6 +1057,90 @@ function App() {
       }
     } catch { }
   }, []);
+  // Seed a starter note when notes are enabled and no entries exist
+  useEffect(() => {
+    const enabled = settings?.widgets?.enableNotes !== false;
+    const entries = Array.isArray(settings?.widgets?.notesEntries)
+      ? settings.widgets.notesEntries
+      : [];
+    if (!enabled || seededNotesRef.current) return;
+    const activeVaultId = settings?.widgets?.notesVaultActiveId || "default";
+    (async () => {
+      try {
+        let synced = null;
+        if (activeVaultId) {
+          synced = await loadNotesFromVault(activeVaultId);
+        }
+        if (Array.isArray(synced)) {
+          const mapped = synced;
+          seededNotesRef.current = true;
+          setSettings((prev) => ({
+            ...prev,
+            widgets: {
+              ...(prev.widgets || {}),
+              notesEntries: mapped,
+              notesActiveId: prev.widgets?.notesActiveId || mapped[0].id,
+              notesContent:
+                prev.widgets?.notesContent || mapped[0].content || "",
+            },
+          }));
+          return;
+        }
+        if (entries.length > 0) return;
+        seededNotesRef.current = true;
+        const seedContent = "";
+        const seedNote = {
+          id: `note-${Date.now()}`,
+          title: "New note",
+          content: seedContent,
+          updatedAt: Date.now(),
+          workspaceId: null,
+          vaultId: activeVaultId,
+          folder: "unassigned",
+        };
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesEntries: [seedNote],
+            notesActiveId: seedNote.id,
+            notesContent: seedContent,
+          },
+        }));
+      } catch {
+        // ignore sync failures; widget still works locally
+      }
+    })();
+  }, [
+    settings?.widgets?.enableNotes,
+    settings?.widgets?.notesEntries,
+    settings?.widgets?.notesContent,
+    settings?.widgets?.notesVaultActiveId,
+  ]);
+
+  // When a pinned folder is configured, use it as the default active folder
+  useEffect(() => {
+    const pinned = settings?.widgets?.notesPinnedFolder || "";
+    if (!pinned) return;
+    setNotesActiveFolder((prev) => (prev ? prev : pinned));
+  }, [settings?.widgets?.notesPinnedFolder]);
+
+  // Ensure we always have an active note id when notes exist
+  useEffect(() => {
+    const entries = Array.isArray(settings?.widgets?.notesEntries)
+      ? settings.widgets.notesEntries
+      : [];
+    const activeId = settings?.widgets?.notesActiveId;
+    if (!entries.length) return;
+    if (activeId && entries.some((n) => n.id === activeId)) return;
+    setSettings((prev) => ({
+      ...prev,
+      widgets: {
+        ...(prev.widgets || {}),
+        notesActiveId: entries[0].id,
+      },
+    }));
+  }, [settings?.widgets?.notesEntries, settings?.widgets?.notesActiveId]);
 
   // Load license state from localStorage (if present)
   // License is no longer used to gate features; we keep any stored license only for display.
@@ -868,10 +1259,78 @@ function App() {
       if (awRaw) {
         const awParsed = JSON.parse(awRaw);
         const normalized = normalizeAppearanceWorkspaceState(awParsed);
-        setSettings((prev) => ({
-          ...prev,
-          appearanceWorkspaces: normalized,
-        }));
+        setSettings((prev) => {
+          const nextOverrides = { ...(normalized.overrides || {}) };
+          // On first load, if workspace appearance is disabled and no master override exists,
+          // initialize master override from current appearance
+          if (!normalized.enabled && !nextOverrides[MASTER_APPEARANCE_ID] && prev.appearance) {
+            nextOverrides[MASTER_APPEARANCE_ID] = prev.appearance;
+          }
+          return {
+            ...prev,
+            appearanceWorkspaces: {
+              ...normalized,
+              overrides: nextOverrides,
+            },
+          };
+        });
+      } else {
+        // First time loading - if workspace appearance is disabled (default), initialize master override
+        setSettings((prev) => {
+          if (prev.appearance) {
+            return {
+              ...prev,
+              appearanceWorkspaces: {
+                enabled: false,
+                overrides: {
+                  [MASTER_APPEARANCE_ID]: prev.appearance,
+                },
+                lastSelectedId: MASTER_APPEARANCE_ID,
+              },
+            };
+          }
+          return prev;
+        });
+      }
+      // Load workspace widgets state from localStorage
+      const wwRaw = localStorage.getItem("workspaceWidgets");
+      if (wwRaw) {
+        try {
+          const wwParsed = JSON.parse(wwRaw);
+          const normalized = normalizeWorkspaceWidgetsState(wwParsed);
+          setSettings((prev) => {
+            const nextOverrides = { ...(normalized.overrides || {}) };
+            // On first load, if workspace widgets is disabled and no master override exists,
+            // initialize master override from current widgets
+            if (!normalized.enabled && !nextOverrides[MASTER_WIDGETS_ID] && prev.widgets) {
+              nextOverrides[MASTER_WIDGETS_ID] = prev.widgets;
+            }
+            return {
+              ...prev,
+              workspaceWidgets: {
+                ...normalized,
+                overrides: nextOverrides,
+              },
+            };
+          });
+        } catch { }
+      } else {
+        // First time loading - initialize master override from current widgets
+        setSettings((prev) => {
+          if (prev.widgets) {
+            return {
+              ...prev,
+              workspaceWidgets: {
+                enabled: false,
+                overrides: {
+                  [MASTER_WIDGETS_ID]: prev.widgets,
+                },
+                lastSelectedId: MASTER_WIDGETS_ID,
+              },
+            };
+          }
+          return prev;
+        });
       }
       // Note: In incognito/first install, use defaults from useState - don't override with localStorage
       // This check only applies if there's existing localStorage data
@@ -1012,6 +1471,13 @@ function App() {
         } else {
           next.wsButtons = { ...wsDefaults, ...next.wsButtons };
         }
+        // Ensure workspaceBlurOverrides is an object
+        if (
+          !next.workspaceBlurOverrides ||
+          typeof next.workspaceBlurOverrides !== "object"
+        ) {
+          next.workspaceBlurOverrides = {};
+        }
         // Bump version marker without remapping stored mode names.
         const modeVersion = Number(next.tabsModeVersion ?? 1);
         if (modeVersion < 2) {
@@ -1077,6 +1543,16 @@ function App() {
       );
     } catch { }
   }, [settings.appearanceWorkspaces]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "workspaceWidgets",
+        JSON.stringify(
+          normalizeWorkspaceWidgetsState(settings.workspaceWidgets),
+        ),
+      );
+    } catch { }
+  }, [settings.workspaceWidgets]);
   useEffect(() => {
     try {
       localStorage.setItem("searchSettings", JSON.stringify(settings.search));
@@ -1199,6 +1675,7 @@ function App() {
           glowTransientByWorkspace: s.glowTransientByWorkspace || {},
           headerFollowsUrlSlug: !!s.headerFollowsUrlSlug,
           glowHover: !!s.glowHover,
+          workspaceBlurOverrides: s.workspaceBlurOverrides || {},
         }),
       );
     } catch { }
@@ -1263,6 +1740,8 @@ function App() {
     // Persist offsets for modern/classic layouts
     settings.speedDial.verticalOffset,
     settings.speedDial.landscapeOffset,
+    // Persist workspace blur overrides
+    settings.speedDial.workspaceBlurOverrides,
   ]);
 
   // Workspaces and Speed Dial per workspace
@@ -1371,8 +1850,24 @@ function App() {
     try {
       window.__APP_WORKSPACES__ = workspaces;
       window.__ACTIVE_WORKSPACE_ID__ = activeWorkspaceId;
+      const widgets = settings?.widgets || {};
+      const vaults = Array.isArray(widgets.notesVaults)
+        ? widgets.notesVaults
+        : [];
+      const activeVaultId = widgets.notesVaultActiveId;
+      const activeVault =
+        vaults.find((v) => v.id === activeVaultId) || vaults[0] || null;
+      const legacyLabel = widgets.notesVault || null;
+      const vaultLabel = activeVault?.name || legacyLabel;
+      window.__NOTES_VAULT__ = vaultLabel || null;
     } catch { }
-  }, [workspaces, activeWorkspaceId]);
+  }, [
+    workspaces,
+    activeWorkspaceId,
+    settings?.widgets?.notesVault,
+    settings?.widgets?.notesVaults,
+    settings?.widgets?.notesVaultActiveId,
+  ]);
 
   useEffect(() => {
     setHoveredWorkspaceId(null);
@@ -1441,6 +1936,88 @@ function App() {
     [settings.appearanceWorkspaces],
   );
   const appearanceWorkspacesEnabled = !!appearanceWorkspacesState.enabled;
+  
+  // Workspace Theming state (separate from appearance workspaces)
+  const [workspaceThemingEnabled, setWorkspaceThemingEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem("workspaceThemingEnabled");
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
+  
+  // Persist workspace theming enabled state
+  useEffect(() => {
+    try {
+      localStorage.setItem("workspaceThemingEnabled", String(workspaceThemingEnabled));
+    } catch { }
+  }, [workspaceThemingEnabled]);
+  
+  // Workspace theming selection (which workspace profile is being edited)
+  const [workspaceThemingSelectedId, setWorkspaceThemingSelectedId] = useState(() => {
+    try {
+      const saved = localStorage.getItem("workspaceThemingSelectedId");
+      return saved ? saved : null; // null = Master Override
+    } catch {
+      return null;
+    }
+  });
+  
+  // Persist workspace theming selection
+  useEffect(() => {
+    try {
+      if (workspaceThemingSelectedId) {
+        localStorage.setItem("workspaceThemingSelectedId", workspaceThemingSelectedId);
+      } else {
+        localStorage.removeItem("workspaceThemingSelectedId");
+      }
+    } catch { }
+  }, [workspaceThemingSelectedId]);
+  
+  // Workspace Widgets state (separate from appearance workspaces and workspace theming)
+  const [workspaceWidgetsEnabled, setWorkspaceWidgetsEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem("workspaceWidgetsEnabled");
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
+  
+  // Persist workspace widgets enabled state
+  useEffect(() => {
+    try {
+      localStorage.setItem("workspaceWidgetsEnabled", String(workspaceWidgetsEnabled));
+    } catch { }
+  }, [workspaceWidgetsEnabled]);
+  
+  // Workspace widgets selection (which workspace profile is being edited)
+  const [workspaceWidgetsSelectedId, setWorkspaceWidgetsSelectedId] = useState(() => {
+    try {
+      const saved = localStorage.getItem("workspaceWidgetsSelectedId");
+      return saved ? saved : null; // null = Master Override
+    } catch {
+      return null;
+    }
+  });
+  
+  // Persist workspace widgets selection
+  useEffect(() => {
+    try {
+      if (workspaceWidgetsSelectedId) {
+        localStorage.setItem("workspaceWidgetsSelectedId", workspaceWidgetsSelectedId);
+      } else {
+        localStorage.removeItem("workspaceWidgetsSelectedId");
+      }
+    } catch { }
+  }, [workspaceWidgetsSelectedId]);
+
+  // Workspace Widgets state (normalized from settings)
+  const workspaceWidgetsState = useMemo(
+    () => normalizeWorkspaceWidgetsState(settings.workspaceWidgets),
+    [settings.workspaceWidgets],
+  );
 
   // Create ref for applyAppearanceEdit early so handlers can use it
   const applyAppearanceEditRef = useRef(null);
@@ -1457,13 +2034,19 @@ function App() {
     [appearanceWorkspacesEnabled],
   );
   const appearanceRuntimeTargetId = useMemo(
-    () =>
-      resolveAppearanceWorkspaceTargetId(
+    () => {
+      // When appearance workspaces are disabled, always use default to ensure
+      // all workspaces use the same appearance profile
+      if (!appearanceWorkspacesEnabled) {
+        return DEFAULT_APPEARANCE_WORKSPACE_ID;
+      }
+      return resolveAppearanceWorkspaceTargetId(
         appearanceWorkspacesState,
         selectedWorkspaceId,
         anchoredWorkspaceId,
-      ),
-    [appearanceWorkspacesState, selectedWorkspaceId, anchoredWorkspaceId],
+      );
+    },
+    [appearanceWorkspacesEnabled, appearanceWorkspacesState, selectedWorkspaceId, anchoredWorkspaceId],
   );
   const activeAppearance = useMemo(
     () =>
@@ -1481,12 +2064,17 @@ function App() {
     ],
   );
   const appearanceEditingTargetId = useMemo(
-    () =>
-      resolveAppearanceWorkspaceTargetId(
-        appearanceWorkspacesState,
-        appearanceWorkspacesState.lastSelectedId,
+    () => {
+      // Always ensure we have a valid target ID, even during state transitions
+      const state = appearanceWorkspacesState || { enabled: false, lastSelectedId: MASTER_APPEARANCE_ID };
+      const targetId = resolveAppearanceWorkspaceTargetId(
+        state,
+        state.lastSelectedId || MASTER_APPEARANCE_ID,
         anchoredWorkspaceId,
-      ),
+      );
+      // Ensure we always return a valid ID
+      return targetId || MASTER_APPEARANCE_ID;
+    },
     [appearanceWorkspacesState, anchoredWorkspaceId],
   );
   const [lastAppearancePreviewId, setLastAppearancePreviewId] =
@@ -1526,6 +2114,7 @@ function App() {
       return {
         ...settings,
         appearance: activeAppearance,
+        workspaceThemingEnabled: workspaceThemingEnabled,
         speedDial: {
           ...(settings.speedDial || {}),
           matchHeaderColor: !!effectiveMatchHeaderColor,
@@ -1541,6 +2130,7 @@ function App() {
       activeAppearance,
       resolveWorkspaceScopedToggle,
       appearanceRuntimeTargetId,
+      workspaceThemingEnabled,
     ],
   );
   const appearancePanelSettings = useMemo(
@@ -1580,30 +2170,47 @@ function App() {
       appearanceEditingTargetId,
     ],
   );
-  // Create centralized theme token resolver
+  // Create centralized theme token resolver with cache invalidation
   const themeTokenResolver = useMemo(() => {
-    return createThemeTokenResolver(runtimeSettings, workspaces, currentPath);
+    const resolver = createThemeTokenResolver(runtimeSettings, workspaces, currentPath);
+    // Update resolver state when dependencies change (it will invalidate cache if needed)
+    if (typeof resolver.updateState === 'function') {
+      resolver.updateState(runtimeSettings, workspaces, currentPath);
+    }
+    return resolver;
   }, [runtimeSettings, workspaces, currentPath]);
 
-  const workspaceBackgroundsEnabled = settings.background?.workspaceEnabled !== false;
+  // Workspace background selection (global + per-workspace, slug-aware)
+  const workspaceBackgroundsEnabled =
+    settings.background?.workspaceEnabled !== false;
   const backgroundFollowSlug = !!settings.background?.followSlug;
+  
+  // Initialize selectedWorkspaceForZoom to null (Master Override) when workspace backgrounds is enabled
+  useEffect(() => {
+    if (workspaceBackgroundsEnabled && !appearanceWorkspacesEnabled && selectedWorkspaceForZoom === undefined) {
+      setSelectedWorkspaceForZoom(null);
+    }
+  }, [workspaceBackgroundsEnabled, appearanceWorkspacesEnabled]);
   const backgroundCandidateWorkspaceId = backgroundFollowSlug
     ? selectedWorkspaceId
     : activeWorkspaceId;
   const backgroundWorkspaceId = useMemo(() => {
     if (!workspaceBackgroundsEnabled) return null;
-    if (!backgroundCandidateWorkspaceId) return null;
-    if (
-      anchoredWorkspaceId &&
-      backgroundCandidateWorkspaceId === anchoredWorkspaceId
-    )
-      return null;
-    return backgroundCandidateWorkspaceId;
-  }, [
-    backgroundCandidateWorkspaceId,
-    anchoredWorkspaceId,
-    workspaceBackgroundsEnabled,
-  ]);
+    if (backgroundCandidateWorkspaceId) {
+      // Allow anchored workspaces to have their own backgrounds as well.
+      return backgroundCandidateWorkspaceId;
+    }
+    // On default path or when no workspace is active, check for default/anchored workspace background
+    if (isDefaultPath || !backgroundCandidateWorkspaceId) {
+      const anchoredWorkspaceId = settings?.speedDial?.anchoredWorkspaceId || null;
+      const defaultWorkspaceId = anchoredWorkspaceId || DEFAULT_APPEARANCE_WORKSPACE_ID;
+      // Check if a background exists for the default workspace
+      if (workspaceBackgrounds[defaultWorkspaceId]) {
+        return defaultWorkspaceId;
+      }
+    }
+    return null;
+  }, [backgroundCandidateWorkspaceId, workspaceBackgroundsEnabled, isDefaultPath, workspaceBackgrounds, settings?.speedDial?.anchoredWorkspaceId]);
   const activeBackgroundSrc = useMemo(() => {
     if (workspaceBackgroundsEnabled && backgroundWorkspaceId) {
       const entry = workspaceBackgrounds[backgroundWorkspaceId];
@@ -1675,11 +2282,75 @@ function App() {
     if (typeof activeBackgroundSrc !== "string") return false;
     return /\.gif(?:[?#].*)?$/i.test(activeBackgroundSrc);
   }, [activeBackgroundPlaceholder, activeBackgroundSrc]);
-  const globalThemeTokens = useMemo(() => {
-    return themeTokenResolver.resolveTokens(selectedWorkspaceId);
-  }, [themeTokenResolver, selectedWorkspaceId]);
+
+  // Apply workspace background when backgroundWorkspaceId changes (e.g., URL change, workspace switch)
+  // This ensures backgrounds are applied even when URL changes via browser navigation
+  // Uses a ref to track the last applied background to avoid unnecessary updates
+  useEffect(() => {
+    // Wait for workspace backgrounds to be restored from localStorage before applying
+    if (!workspaceBackgroundsRestoredRef.current) return;
+    
+    // Cancel any pending background loading when workspace changes
+    const controllers = backgroundAbortControllersRef.current;
+    controllers.forEach((controller, wsId) => {
+      if (wsId !== backgroundWorkspaceId) {
+        controller.abort();
+        controllers.delete(wsId);
+      }
+    });
+
+    if (!workspaceBackgroundsEnabled) return;
+    if (!backgroundWorkspaceId) return;
+    
+    const entry = workspaceBackgrounds[backgroundWorkspaceId];
+    if (!entry || !entry.src || !entry.meta) return;
+
+    // Skip if this background is already applied
+    if (
+      lastAppliedBackgroundRef.current.workspaceId === backgroundWorkspaceId &&
+      lastAppliedBackgroundRef.current.src === entry.src
+    ) {
+      return;
+    }
+
+    // Update the ref to track what we're applying
+    lastAppliedBackgroundRef.current = {
+      workspaceId: backgroundWorkspaceId,
+      src: entry.src,
+    };
+
+    setGlobalBackgroundMeta(entry.meta);
+    setCurrentBackground(entry.src);
+    try {
+      localStorage.setItem("vivaldi-current-background", entry.src);
+    } catch { }
+    try {
+      localStorage.setItem(
+        "vivaldi-current-background-meta",
+        JSON.stringify(entry.meta),
+      );
+    } catch { }
+  }, [
+    backgroundWorkspaceId,
+    workspaceBackgrounds,
+    workspaceBackgroundsEnabled,
+    workspaceBackgroundsRestored,
+  ]);
 
   // Extract resolved tokens for backward compatibility
+  const globalThemeTokens = useMemo(() => {
+    try {
+      return themeTokenResolver.resolveUnchangeableTokens();
+    } catch {
+      return {
+        fontFamily: settings.theme?.font || "Inter",
+        textColor: settings.theme?.colors?.primary || "#ffffff",
+        accentColor: settings.theme?.colors?.accent || "#00ffff",
+        glowColor: settings.speedDial?.glowColor || "#00ffff66",
+        _meta: {},
+      };
+    }
+  }, [themeTokenResolver, settings.theme, settings.speedDial]);
   const globalFontFamily = globalThemeTokens.fontFamily;
   const globalPrimaryColor = globalThemeTokens.textColor;
   const globalAccentColor = globalThemeTokens.accentColor;
@@ -1709,12 +2380,21 @@ function App() {
         setCurrentPath(path);
       },
       onThemeChange: ({ workspaceId, isHardSwitch, applyBackground }) => {
-        // Theme tokens are automatically resolved through the resolver
-        // Background changes are handled separately and only on hard switches
-        if (applyBackground && isHardSwitch) {
-          // Background switching logic would go here if needed
-          // For now, backgrounds are managed separately
-        }
+        // Theme tokens are automatically resolved through the resolver.
+        // Background changes apply only on hard switches, and only when
+        // workspace backgrounds are enabled and a per-workspace background
+        // has been assigned.
+        // Note: The background will be applied via the useEffect that watches
+        // backgroundWorkspaceId, so we don't need to apply it here to avoid
+        // race conditions. This callback is kept for backward compatibility
+        // but the useEffect is the primary mechanism.
+        if (!applyBackground || !isHardSwitch) return;
+        if (!workspaceId) return;
+        const enabled =
+          settings.background?.workspaceEnabled !== false;
+        if (!enabled) return;
+        // Use state instead of ref to ensure we have the latest data
+        // The useEffect will handle the actual application
       },
       onSettingsChange: (changes) => {
         setSettings((prev) => {
@@ -1793,15 +2473,43 @@ function App() {
   };
   const handleWorkspaceAdd = () => {
     const id = "ws-" + Date.now();
-    setWorkspaces((prev) => [
-      ...prev,
-      { id, name: "New", icon: "LayoutList", position: prev.length },
-    ]);
+    const nextWorkspace = {
+      id,
+      name: "New",
+      icon: "LayoutList",
+      position: workspaces.length,
+    };
+    setWorkspaces((prev) => [...prev, nextWorkspace]);
     setSpeedDials((prev) => ({ ...prev, [id]: [] }));
     setActiveWorkspaceId(id);
     setHoveredWorkspaceId(null);
+    try {
+      const folder = getWorkspaceFolderName(id, [nextWorkspace]);
+      if (folder) {
+        import("./lib/notes-sync")
+          .then((mod) => mod.ensureVaultFolders?.([folder]))
+          .catch(() => { });
+      }
+    } catch { }
   };
-  const handleWorkspaceRemove = (id) => {
+  const handleWorkspaceRemove = (id, options) => {
+    const ws = workspaces.find((w) => w.id === id) || null;
+    if (!ws) return;
+    let deleteFolder = !!(options && options.deleteFolder);
+    if (!options) {
+      const baseMsg =
+        `Delete workspace "${ws.name || "Workspace"}"?\n\n` +
+        `All shortcuts in this workspace will be removed from the Start page.`;
+      // First confirmation: delete workspace at all
+      if (typeof window !== "undefined") {
+        const ok = window.confirm(baseMsg);
+        if (!ok) return;
+        const folderPrompt =
+          "Also delete the associated notes folder for this workspace?\n\n" +
+          "(Choose OK to delete the folder and its notes from the vault, or Cancel to keep them.)";
+        deleteFolder = window.confirm(folderPrompt);
+      }
+    }
     setWorkspaces((prev) =>
       prev.filter((w) => w.id !== id).map((w, i) => ({ ...w, position: i })),
     );
@@ -1815,6 +2523,14 @@ function App() {
     }
     if (activeWorkspaceId === id && workspaces.length > 1) {
       setActiveWorkspaceId(workspaces[0].id);
+    }
+    if (deleteFolder) {
+      const folder = getWorkspaceFolderName(id, workspaces);
+      if (folder) {
+        import("./lib/notes-sync")
+          .then((mod) => mod.deleteVaultFolders?.([folder]))
+          .catch(() => { });
+      }
     }
   };
   const handleWorkspaceReorder = (next) => setWorkspaces(next);
@@ -2097,6 +2813,20 @@ function App() {
         ...prev,
         general: { ...(prev.general || {}), capSuggestions7: !!e.detail },
       }));
+    const onShortcutUpdate = (e) => {
+      const { action, shortcut } = e.detail || {}
+      if (!action || !shortcut) return
+      setSettings((prev) => ({
+        ...prev,
+        general: {
+          ...(prev.general || {}),
+          shortcuts: {
+            ...(prev.general?.shortcuts || {}),
+            [action]: shortcut
+          }
+        }
+      }))
+    }
     const onInlineProvider = (e) =>
       setSettings((prev) => ({
         ...prev,
@@ -2444,6 +3174,7 @@ function App() {
     window.addEventListener("app-ai-routing-model-code", onAiRoutingModelCode);
     window.addEventListener("app-ai-routing-model-long", onAiRoutingModelLong);
     window.addEventListener("app-toggle-suggestions-cap7", onCap7);
+    window.addEventListener("app-shortcut-update", onShortcutUpdate);
     window.addEventListener("app-inline-set-provider", onInlineProvider);
     window.addEventListener("app-inline-use-ai", onInlineUseAI);
     window.addEventListener("app-inline-firecrawl-base", onInlineFirecrawlBase);
@@ -2571,6 +3302,7 @@ function App() {
         onAiRoutingModelLong,
       );
       window.removeEventListener("app-toggle-suggestions-cap7", onCap7);
+      window.removeEventListener("app-shortcut-update", onShortcutUpdate);
       window.removeEventListener("app-inline-set-provider", onInlineProvider);
       window.removeEventListener("app-inline-use-ai", onInlineUseAI);
       window.removeEventListener(
@@ -2635,6 +3367,39 @@ function App() {
     };
   }, []);
 
+  // Persist email accounts
+  useEffect(() => {
+    try {
+      localStorage.setItem("vivaldi-email-accounts", JSON.stringify(emailAccounts));
+    } catch { }
+  }, [emailAccounts]);
+
+  const handleAddEmailAccount = (account) => {
+    setEmailAccounts((prev) => {
+      if (prev.some((a) => a.email === account.email)) return prev;
+      return [...prev, account];
+    });
+  };
+
+  const handleRemoveEmailAccount = (account) => {
+    setEmailAccounts((prev) => prev.filter((a) => a.email !== account.email));
+  };
+
+  const handleUpdateEmailAccountWorkspace = (account, workspaceId) => {
+    // Handle both account object and email string
+    const email = typeof account === 'string' ? account : account?.email
+    if (!email) {
+      console.error('handleUpdateEmailAccountWorkspace: missing email', account)
+      return
+    }
+    console.log('📧 Updating email account workspace:', email, '→', workspaceId)
+    setEmailAccounts((prev) => {
+      const updated = prev.map((a) => (a.email === email ? { ...a, workspaceId: workspaceId || null } : a))
+      console.log('📧 Updated email accounts:', updated)
+      return updated
+    })
+  };
+
   // Track AI and inline enable toggles from Settings
   useEffect(() => {
     const onAiEnabled = (e) => {
@@ -2680,6 +3445,146 @@ function App() {
       window.removeEventListener("mousedown", handleMiddleMouseButton);
     };
   }, []);
+
+  // Keyboard shortcut handler
+  useEffect(() => {
+    const keySequenceRef = { current: [] }
+    const sequenceTimeoutRef = { current: null }
+    const SEQUENCE_TIMEOUT = 1000 // 1 second to complete sequence
+
+    const normalizeKey = (key) => {
+      // Handle space character
+      if (key === ' ' || key === 'Space') return ' '
+      if (key.length === 1 && /[a-zA-Z0-9]/.test(key)) return key.toLowerCase()
+      if (key.startsWith('Arrow')) return key.replace('Arrow', '')
+      return key
+    }
+
+    const parseShortcut = (shortcut) => {
+      if (!shortcut) return []
+      return shortcut.split(' ').map(k => {
+        k = k.trim()
+        // Convert 'Space' string to space character for matching
+        if (k === 'Space') return ' '
+        return k
+      }).filter(k => k)
+    }
+
+    const matchesSequence = (pressed, target) => {
+      if (pressed.length !== target.length) return false
+      for (let i = 0; i < pressed.length; i++) {
+        const pressedKey = normalizeKey(pressed[i])
+        const targetKey = normalizeKey(target[i])
+        if (pressedKey !== targetKey) {
+          return false
+        }
+      }
+      return true
+    }
+
+    // Log the shortcut on mount/change
+    const focusShortcut = settings?.general?.shortcuts?.focusSearchbar || 'x Space'
+    console.log('Keyboard shortcut handler initialized. Shortcut:', focusShortcut, 'Parsed:', parseShortcut(focusShortcut))
+
+    const handleKeyDown = (e) => {
+      // Don't trigger shortcuts when typing in inputs, textareas, or contenteditable
+      const target = e.target
+      if (target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        target.closest('[contenteditable="true"]')
+      )) {
+        // Reset sequence if user is typing
+        keySequenceRef.current = []
+        if (sequenceTimeoutRef.current) {
+          clearTimeout(sequenceTimeoutRef.current)
+          sequenceTimeoutRef.current = null
+        }
+        return
+      }
+
+      const key = normalizeKey(e.key)
+
+      // Check for focusSearchbar shortcut
+      const focusShortcut = settings?.general?.shortcuts?.focusSearchbar || 'x Space'
+      const targetSequence = parseShortcut(focusShortcut)
+
+      // Add the current key to the sequence
+      keySequenceRef.current.push(key)
+
+      // Clear existing timeout
+      if (sequenceTimeoutRef.current) {
+        clearTimeout(sequenceTimeoutRef.current)
+        sequenceTimeoutRef.current = null
+      }
+
+      // Debug logging (can be removed later)
+      console.log('Key pressed:', key, 'Sequence:', keySequenceRef.current, 'Target:', targetSequence)
+
+      // Check if sequence matches
+      if (matchesSequence(keySequenceRef.current, targetSequence)) {
+        console.log('Shortcut matched! Focusing searchbar...')
+        e.preventDefault()
+        e.stopPropagation()
+        keySequenceRef.current = []
+        if (sequenceTimeoutRef.current) {
+          clearTimeout(sequenceTimeoutRef.current)
+          sequenceTimeoutRef.current = null
+        }
+        // Focus searchbar
+        setTimeout(() => {
+          if (searchBoxRef.current?.focus) {
+            console.log('Calling focus on searchBoxRef')
+            searchBoxRef.current.focus()
+          } else {
+            console.warn('searchBoxRef.current?.focus is not available', searchBoxRef.current)
+          }
+        }, 0)
+        return
+      }
+
+      // Reset sequence if it's too long or doesn't match the start
+      if (keySequenceRef.current.length > targetSequence.length) {
+        // Check if this key could start a new sequence
+        if (normalizeKey(key) === normalizeKey(targetSequence[0])) {
+          keySequenceRef.current = [key]
+        } else {
+          keySequenceRef.current = []
+        }
+      } else {
+        // Check if current sequence still matches the beginning of target
+        let stillMatches = true
+        for (let i = 0; i < keySequenceRef.current.length; i++) {
+          if (normalizeKey(keySequenceRef.current[i]) !== normalizeKey(targetSequence[i])) {
+            stillMatches = false
+            break
+          }
+        }
+        if (!stillMatches) {
+          // If this key could start a new sequence, keep it, otherwise reset
+          if (normalizeKey(key) === normalizeKey(targetSequence[0])) {
+            keySequenceRef.current = [key]
+          } else {
+            keySequenceRef.current = []
+          }
+        }
+      }
+
+      // Set timeout to reset sequence if not completed
+      sequenceTimeoutRef.current = setTimeout(() => {
+        keySequenceRef.current = []
+      }, SEQUENCE_TIMEOUT)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      if (sequenceTimeoutRef.current) {
+        clearTimeout(sequenceTimeoutRef.current)
+      }
+    }
+  }, [settings?.general?.shortcuts?.focusSearchbar])
 
   // Handle scroll-to-change-workspace for the entire right column when "include whole column" is enabled
   useEffect(() => {
@@ -3158,6 +4063,14 @@ function App() {
         nextSettings.appearanceWorkspaces = normalizeAppearanceWorkspaceState(
           nextSettings.appearanceWorkspaces,
         );
+        
+        // Clean up appearance workspace state: if disabled, clear all overrides
+        // Global appearance settings take precedence when appearance workspaces are disabled
+        const normalizedAws = nextSettings.appearanceWorkspaces;
+        if (!normalizedAws.enabled) {
+          // Clear all overrides when appearance workspaces are disabled
+          normalizedAws.overrides = {};
+        }
         const nextActiveId =
           data.activeWorkspaceId ||
           (Array.isArray(nextWorkspaces) && nextWorkspaces[0]?.id) ||
@@ -3280,10 +4193,29 @@ function App() {
 
   const handleWorkspaceBackgroundChange = useCallback(
     (workspaceId, url, meta) => {
-      if (!workspaceId) return;
-      setWorkspaceBackgroundMeta(workspaceId, meta, url).catch(() => { });
+      if (workspaceId === null) {
+        // Master Override: update all workspaces
+        workspaces.forEach((ws) => {
+          setWorkspaceBackgroundMeta(ws.id, meta, url).catch(() => { });
+        });
+        // Also update global background
+        handleBackgroundChange(url, meta);
+      } else if (workspaceId) {
+        setWorkspaceBackgroundMeta(workspaceId, meta, url).catch(() => { });
+      }
     },
-    [setWorkspaceBackgroundMeta],
+    [setWorkspaceBackgroundMeta, workspaces, handleBackgroundChange],
+  );
+
+  const handleDefaultWorkspaceBackgroundChange = useCallback(
+    (url, meta) => {
+      // For default/anchored workspace, use the anchored workspace ID if it exists,
+      // otherwise use the DEFAULT_APPEARANCE_WORKSPACE_ID constant
+      const anchoredWorkspaceId = settings?.speedDial?.anchoredWorkspaceId || null;
+      const defaultWorkspaceId = anchoredWorkspaceId || DEFAULT_APPEARANCE_WORKSPACE_ID;
+      setWorkspaceBackgroundMeta(defaultWorkspaceId, meta, url).catch(() => { });
+    },
+    [setWorkspaceBackgroundMeta, settings?.speedDial?.anchoredWorkspaceId],
   );
 
   const handleToggleBackgroundFollowSlug = useCallback((value) => {
@@ -3298,6 +4230,36 @@ function App() {
       ...prev,
       background: { ...prev.background, workspaceEnabled: !!value },
     }));
+  }, []);
+
+  const handleToggleWorkspaceTheming = useCallback((enabled) => {
+    setWorkspaceThemingEnabled(enabled);
+    // When disabling, reset selection to Master Override
+    if (!enabled) {
+      setWorkspaceThemingSelectedId(null);
+    } else if (workspaceThemingSelectedId === null && activeWorkspaceId) {
+      // When enabling, select active workspace if available
+      setWorkspaceThemingSelectedId(activeWorkspaceId);
+    }
+  }, [activeWorkspaceId, workspaceThemingSelectedId]);
+  
+  const handleSelectWorkspaceTheming = useCallback((workspaceId) => {
+    setWorkspaceThemingSelectedId(workspaceId);
+  }, []);
+  
+  const handleToggleWorkspaceWidgets = useCallback((enabled) => {
+    setWorkspaceWidgetsEnabled(enabled);
+    // When disabling, reset selection to Master Override
+    if (!enabled) {
+      setWorkspaceWidgetsSelectedId(null);
+    } else if (workspaceWidgetsSelectedId === null && activeWorkspaceId) {
+      // When enabling, select active workspace if available
+      setWorkspaceWidgetsSelectedId(activeWorkspaceId);
+    }
+  }, [activeWorkspaceId, workspaceWidgetsSelectedId]);
+  
+  const handleSelectWorkspaceWidgets = useCallback((workspaceId) => {
+    setWorkspaceWidgetsSelectedId(workspaceId);
   }, []);
 
   const handleSelectAppearanceWorkspace = useCallback(
@@ -3350,12 +4312,39 @@ function App() {
           prev.appearanceWorkspaces,
         );
         const anchorId = prev.speedDial?.anchoredWorkspaceId || null;
-        const initialTarget = enabled ? MASTER_APPEARANCE_ID : selectedWorkspaceId;
+        const nextOverrides = { ...(state.overrides || {}) };
+        
+        if (enabled) {
+          // When enabling workspace appearance, if no master override exists, use current appearance as master override
+          if (!nextOverrides[MASTER_APPEARANCE_ID]) {
+            nextOverrides[MASTER_APPEARANCE_ID] = prev.appearance || {};
+          }
+        } else {
+          // When disabling workspace appearance, master override becomes the main profile (base appearance)
+          const masterOverride = nextOverrides[MASTER_APPEARANCE_ID];
+          if (masterOverride) {
+            return {
+              ...prev,
+              appearance: masterOverride,
+              appearanceWorkspaces: {
+                ...state,
+                enabled: false,
+                overrides: nextOverrides,
+                lastSelectedId: MASTER_APPEARANCE_ID,
+              },
+            };
+          }
+        }
+        
+        // Ensure we always have a valid initial target
+        const initialTarget = enabled 
+          ? (state.lastSelectedId || MASTER_APPEARANCE_ID)
+          : MASTER_APPEARANCE_ID;
         const targetId = resolveAppearanceWorkspaceTargetId(
-          state,
+          { ...state, enabled: !!enabled },
           initialTarget,
           anchorId,
-        );
+        ) || MASTER_APPEARANCE_ID;
         if (enabled) {
           setLastAppearancePreviewId(
             selectedWorkspaceId || activeWorkspaceId,
@@ -3368,6 +4357,7 @@ function App() {
           appearanceWorkspaces: {
             ...state,
             enabled: !!enabled,
+            overrides: nextOverrides,
             lastSelectedId: targetId,
           },
         };
@@ -3405,9 +4395,11 @@ function App() {
           prev.appearanceWorkspaces,
         );
         const anchorId = prev.speedDial?.anchoredWorkspaceId || null;
+        // Ensure we always have a valid workspaceId or fallback
+        const validWorkspaceId = workspaceId || state.lastSelectedId || MASTER_APPEARANCE_ID;
         const targetId = resolveAppearanceWorkspaceTargetId(
           state,
-          workspaceId || state.lastSelectedId,
+          validWorkspaceId,
           anchorId,
         );
         const baseAppearance = prev.appearance || {};
@@ -3415,21 +4407,47 @@ function App() {
         const isMasterTarget = targetId === MASTER_APPEARANCE_ID;
         const useOverride = state.enabled && !isMasterTarget;
 
-        // Determine Parent Layer (what we inherit from)
-        const masterOverride = overrides[MASTER_APPEARANCE_ID];
-        // If editing Master, parent is Base. If editing Workspace, parent is Base+Master.
-        const parentLayer = isMasterTarget
-          ? baseAppearance
-          : (masterOverride ? deepMergeAppearance(baseAppearance, masterOverride) : baseAppearance);
+        // When appearance workspaces are disabled, use master override (or base if no master override exists)
+        let currentAppearance;
+        let parentLayer;
+        if (!state.enabled) {
+          // When disabled, master override IS the main profile
+          const masterOverride = overrides[MASTER_APPEARANCE_ID];
+          currentAppearance = masterOverride || baseAppearance;
+        } else {
+          // Determine Parent Layer (what we inherit from)
+          const masterOverride = overrides[MASTER_APPEARANCE_ID];
+          // If editing Master, parent is Base. If editing Workspace, parent is Base+Master.
+          parentLayer = isMasterTarget
+            ? baseAppearance
+            : (masterOverride ? deepMergeAppearance(baseAppearance, masterOverride) : baseAppearance);
 
-        // Determine Current Resolved State (what we see)
-        // If editing Master, current is Master (or Base).
-        // If editing Workspace, current is Parent + WorkspaceOverride.
-        const currentAppearance = isMasterTarget
-          ? (masterOverride || baseAppearance)
-          : (overrides[targetId] ? deepMergeAppearance(parentLayer, overrides[targetId]) : parentLayer);
+          // Determine Current Resolved State (what we see)
+          // If editing Master, current is Master (or Base).
+          // If editing Workspace, current is Parent + WorkspaceOverride.
+          currentAppearance = isMasterTarget
+            ? (masterOverride || baseAppearance)
+            : (overrides[targetId] ? deepMergeAppearance(parentLayer, overrides[targetId]) : parentLayer);
+        }
 
         const nextAppearance = mutator(currentAppearance) || currentAppearance;
+
+        // When appearance workspaces are disabled, update master override (which is the main profile)
+        if (!state.enabled) {
+          const finalAppearance = nextAppearance;
+          const nextOverrides = { ...overrides };
+          // Store the appearance in master override when disabled
+          nextOverrides[MASTER_APPEARANCE_ID] = finalAppearance;
+          return {
+            ...prev,
+            appearance: finalAppearance, // Also update base for backward compatibility
+            appearanceWorkspaces: {
+              ...state,
+              overrides: nextOverrides,
+              lastSelectedId: workspaceId || targetId,
+            },
+          };
+        }
 
         // When editing master override, ensure we merge with base to preserve all properties
         const finalAppearance = isMasterTarget && nextAppearance !== currentAppearance
@@ -3450,12 +4468,26 @@ function App() {
         }
 
         if (isMasterTarget) {
+          // Calculate what changed in Master
+          const delta = getAppearanceDiff(currentAppearance, finalAppearance);
+
+          // Clean up other overrides to ensure Master change propagates ("sync")
+          const nextOverrides = { ...overrides };
+          Object.keys(nextOverrides).forEach(key => {
+            if (key !== MASTER_APPEARANCE_ID) {
+              nextOverrides[key] = deepRemoveKeys(nextOverrides[key], delta);
+              if (Object.keys(nextOverrides[key]).length === 0) {
+                delete nextOverrides[key];
+              }
+            }
+          });
+
           return {
             ...prev,
             appearanceWorkspaces: {
               ...nextState,
               overrides: {
-                ...overrides,
+                ...nextOverrides,
                 [MASTER_APPEARANCE_ID]: finalAppearance,
               },
             },
@@ -3489,47 +4521,240 @@ function App() {
   }, [appearanceWorkspacesState.lastSelectedId, appearanceWorkspacesEnabled]);
 
   const applyAppearanceEdit = useCallback(
-    (mutator) =>
-      updateAppearanceForWorkspace(appearanceEditingTargetId, mutator),
+    (mutator) => {
+      // Ensure we always have a valid target ID before calling updateAppearanceForWorkspace
+      const targetId = appearanceEditingTargetId || MASTER_APPEARANCE_ID;
+      updateAppearanceForWorkspace(targetId, mutator);
+    },
     [updateAppearanceForWorkspace, appearanceEditingTargetId],
   );
   useEffect(() => {
     applyAppearanceEditRef.current = applyAppearanceEdit;
   }, [applyAppearanceEdit]);
 
+  // Workspace Widgets editing target ID (which workspace profile is being edited)
+  const workspaceWidgetsEditingTargetId = useMemo(
+    () => {
+      const state = workspaceWidgetsState || { enabled: false, lastSelectedId: MASTER_WIDGETS_ID };
+      const targetId = resolveWorkspaceWidgetsTargetId(
+        state,
+        workspaceWidgetsSelectedId || MASTER_WIDGETS_ID,
+      );
+      return targetId;
+    },
+    [workspaceWidgetsState, workspaceWidgetsSelectedId],
+  );
+
+  // Workspace Widgets runtime target ID (which workspace profile is active)
+  const workspaceWidgetsRuntimeTargetId = useMemo(
+    () => {
+      // When workspace widgets are disabled, always use master to ensure
+      // all workspaces use the same widgets profile
+      if (!workspaceWidgetsEnabled) {
+        return MASTER_WIDGETS_ID;
+      }
+      return resolveWorkspaceWidgetsTargetId(
+        workspaceWidgetsState,
+        selectedWorkspaceId,
+      );
+    },
+    [workspaceWidgetsEnabled, workspaceWidgetsState, selectedWorkspaceId],
+  );
+
+  // Active widgets profile (resolved for current workspace - runtime)
+  const activeWidgetsProfile = useMemo(
+    () =>
+      resolveWorkspaceWidgetsProfile(
+        settings.widgets,
+        workspaceWidgetsState,
+        workspaceWidgetsRuntimeTargetId,
+      ),
+    [
+      settings.widgets,
+      workspaceWidgetsState,
+      workspaceWidgetsRuntimeTargetId,
+    ],
+  );
+
+  // Editing widgets profile (resolved for editing target - for settings UI)
+  const editingWidgetsProfile = useMemo(
+    () =>
+      resolveWorkspaceWidgetsProfile(
+        settings.widgets,
+        workspaceWidgetsState,
+        workspaceWidgetsEditingTargetId,
+      ),
+    [
+      settings.widgets,
+      workspaceWidgetsState,
+      workspaceWidgetsEditingTargetId,
+    ],
+  );
+
+  // Update widgets for a specific workspace (similar to updateAppearanceForWorkspace)
+  const updateWidgetsForWorkspace = useCallback(
+    (workspaceId, mutator) => {
+      if (typeof mutator !== "function") return;
+      setSettings((prev) => {
+        const state = normalizeWorkspaceWidgetsState(
+          prev.workspaceWidgets,
+        );
+        const validWorkspaceId = workspaceId || state.lastSelectedId || MASTER_WIDGETS_ID;
+        const targetId = resolveWorkspaceWidgetsTargetId(
+          state,
+          validWorkspaceId,
+        );
+        const isMasterTarget = targetId === MASTER_WIDGETS_ID;
+        const baseWidgets = prev.widgets || {};
+        const overrides = state.overrides || {};
+        const masterOverride = overrides[MASTER_WIDGETS_ID] || null;
+        const workspaceOverride = overrides[targetId] || null;
+        
+        // Build parent layer (base + master override)
+        const parentLayer = masterOverride
+          ? { ...baseWidgets, ...masterOverride }
+          : baseWidgets;
+        
+        // Build current widgets for this workspace
+        const currentWidgets = workspaceOverride
+          ? { ...parentLayer, ...workspaceOverride }
+          : parentLayer;
+        
+        // Apply mutator
+        const nextWidgets = mutator(currentWidgets);
+        if (!nextWidgets || typeof nextWidgets !== "object") {
+          return prev;
+        }
+
+        const nextState = {
+          ...state,
+          lastSelectedId: targetId,
+        };
+
+        if (isMasterTarget) {
+          // Master override: store full profile
+          return {
+            ...prev,
+            workspaceWidgets: {
+              ...nextState,
+              overrides: {
+                ...overrides,
+                [MASTER_WIDGETS_ID]: nextWidgets,
+              },
+            },
+          };
+        }
+
+        // Workspace override: store diff from parent
+        // Check all keys in nextWidgets and all keys currently in workspaceOverride
+        const allKeys = new Set([
+          ...Object.keys(nextWidgets),
+          ...(workspaceOverride ? Object.keys(workspaceOverride) : [])
+        ]);
+        
+        const delta = {};
+        allKeys.forEach(key => {
+          const nextValue = nextWidgets[key];
+          const parentValue = parentLayer[key];
+          
+          // Handle undefined/missing keys - if key is missing in parent, it's undefined
+          const nextHasKey = key in nextWidgets;
+          const parentHasKey = key in parentLayer;
+          
+          // Special handling for boolean widget enable flags:
+          // - undefined in parent means "enabled by default" (treated as true)
+          // - false in workspace means "explicitly disabled"
+          // - true in workspace when parent is undefined means "matches default" (no override needed)
+          const isWidgetEnableFlag = key === 'enableClock' || key === 'enableWeather' || 
+                                     key === 'enableMusicPlayer' || key === 'enableNotes' || 
+                                     key === 'enableEmail';
+          
+          let isDifferent = false;
+          
+          if (isWidgetEnableFlag) {
+            // For widget enable flags, always store the explicit value when in a workspace profile
+            // This ensures workspace-specific toggles are saved even if they match the parent default
+            // Only skip storing if we're in master override and it matches base
+            if (isMasterTarget) {
+              // In master: only store if different from base
+              const parentEffectiveValue = parentHasKey ? parentValue : true;
+              const nextEffectiveValue = nextHasKey ? nextValue : true;
+              isDifferent = parentEffectiveValue !== nextEffectiveValue;
+            } else {
+              // In workspace profile: always store explicit value to ensure workspace-specific setting
+              isDifferent = true;
+            }
+          } else {
+            // For other properties, use standard comparison
+            isDifferent = (nextHasKey !== parentHasKey) || 
+              (nextHasKey && parentHasKey && JSON.stringify(nextValue) !== JSON.stringify(parentValue));
+          }
+          
+          if (isDifferent) {
+            // Value differs from parent - include in override
+            delta[key] = nextValue;
+          }
+          // If value matches parent, don't include it (removes from override if it was there)
+        });
+
+        // If delta is empty, remove the workspace override entirely
+        const nextOverrides = { ...overrides };
+        if (Object.keys(delta).length === 0) {
+          delete nextOverrides[targetId];
+        } else {
+          nextOverrides[targetId] = delta;
+        }
+
+        return {
+          ...prev,
+          workspaceWidgets: {
+            ...nextState,
+            overrides: nextOverrides,
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  // Apply widgets edit to current editing target
+  const applyWidgetsEdit = useCallback(
+    (mutator) => {
+      const targetId = workspaceWidgetsEditingTargetId || MASTER_WIDGETS_ID;
+      updateWidgetsForWorkspace(targetId, mutator);
+    },
+    [updateWidgetsForWorkspace, workspaceWidgetsEditingTargetId],
+  );
+  
+  // Create ref for applyWidgetsEdit early so handlers can use it
+  const applyWidgetsEditRef = useRef(null);
+  useEffect(() => {
+    applyWidgetsEditRef.current = applyWidgetsEdit;
+  }, [applyWidgetsEdit]);
+
   const appearanceWorkspaceOptions = useMemo(() => {
-    const anchoredWorkspace =
-      workspaces.find((ws) => ws.id === anchoredWorkspaceId) || null;
-    const baseLabel = anchoredWorkspace
-      ? `Default / ${anchoredWorkspace.name || "Anchored"}`
-      : "Default / Anchored";
     const items = [
       { id: MASTER_APPEARANCE_ID, label: "Master Override", anchored: false },
-      {
-        id: DEFAULT_APPEARANCE_WORKSPACE_ID,
-        label: baseLabel,
-        anchored: true,
-      },
     ];
     workspaces.forEach((ws) => {
-      if (anchoredWorkspaceId && ws.id === anchoredWorkspaceId) return;
       items.push({
         id: ws.id,
         label: ws.name || "Workspace",
-        anchored: anchoredWorkspaceId === ws.id,
+        anchored: false,
       });
     });
     return items;
-  }, [workspaces, anchoredWorkspaceId]);
+  }, [workspaces]);
 
-  // Apply theme styles to CSS custom properties for real-time updates
+  // Apply theme styles to CSS custom properties for real-time updates (batched)
   useEffect(() => {
     if (!mounted) return;
 
-    const root = document.documentElement;
+    // Collect all CSS properties to apply in a single batch
+    const cssProperties = new Map();
 
     // Font family from presets or workspace override
-    root.style.setProperty("--font-family", globalFontFamily);
+    cssProperties.set("--font-family", globalFontFamily);
 
     const fallbackPrimary = stripAlphaFromHex(
       settings.theme.colors.primary || "#ffffff",
@@ -3537,61 +4762,54 @@ function App() {
     const manualRgb = hexToRgb(globalPrimaryColor) ||
       hexToRgb(fallbackPrimary) || { r: 255, g: 255, b: 255 };
 
-    const applyAccent = () => {
-      if (activeAppearance?.matchWorkspaceAccentColor) {
-        root.style.setProperty("--color-accent", globalAccentColor);
-        return;
-      }
-      root.style.setProperty("--color-accent", globalAccentColor);
-    };
+    // Text color
+    const normalized = stripAlphaFromHex(globalPrimaryColor || fallbackPrimary);
+    const rgb = hexToRgb(normalized) || manualRgb;
+    cssProperties.set("--color-primary", normalized);
+    cssProperties.set("--text-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
 
-    const applyText = (hex) => {
-      const normalized = stripAlphaFromHex(hex || fallbackPrimary);
-      const rgb = hexToRgb(normalized) || manualRgb;
-      root.style.setProperty("--color-primary", normalized);
-      root.style.setProperty("--text-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
-      applyAccent();
-    };
+    // Accent color
+    cssProperties.set("--color-accent", globalAccentColor);
 
-    if (
-      activeAppearance?.matchWorkspaceTextColor &&
-      normalizedWorkspaceTextColor
-    ) {
-      applyText(globalPrimaryColor);
-    } else {
-      applyText(globalPrimaryColor);
-    }
-
-    root.style.setProperty(
+    // Secondary color
+    cssProperties.set(
       "--color-secondary",
       settings.theme.colors.secondary,
     );
 
     // Transparency values
-    root.style.setProperty(
+    cssProperties.set(
       "--transparency-global",
       String(settings.theme.transparency ?? 0.1),
     );
-    root.style.setProperty(
+    cssProperties.set(
       "--transparency-speed-dial",
       String(settings.speedDial.transparency ?? 0.1),
     );
 
     // Glass effect
-    root.style.setProperty(
+    cssProperties.set(
       "--glass-blur",
       settings.theme.glassEffect ? "16px" : "0px",
     );
-    root.style.setProperty(
+    cssProperties.set(
       "--glass-border",
       settings.theme.borders ? "1px solid rgba(255, 255, 255, 0.2)" : "none",
     );
 
     // Border style
-    root.style.setProperty(
+    cssProperties.set(
       "--border-radius",
       settings.theme.borderStyle === "rounded" ? "16px" : "4px",
     );
+
+    // Batch apply all properties in a single requestAnimationFrame
+    requestAnimationFrame(() => {
+      const root = document.documentElement;
+      cssProperties.forEach((value, property) => {
+        root.style.setProperty(property, value);
+      });
+    });
   }, [
     settings.theme,
     settings.speedDial.transparency,
@@ -3656,36 +4874,191 @@ function App() {
     }
   }
 
+  function deriveNoteTitle(raw, fallback = "Untitled note") {
+    try {
+      const source = String(raw || "").trim();
+      if (!source) return fallback;
+      const line = source.split(/\r?\n/).find((l) => !!l.trim()) || source;
+      const trimmed = line.trim();
+      if (!trimmed) return fallback;
+      return trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
+    } catch {
+      return fallback;
+    }
+  }
+
   // Resolve widget theme tokens with full workspace conformance
   const widgetThemeTokens = useMemo(() => {
     return themeTokenResolver.resolveWidgetTokens(selectedWorkspaceId);
   }, [themeTokenResolver, selectedWorkspaceId]);
 
-  const legacyLayoutPreset = settings.widgets?.layoutPreset || "preset1";
-  const clockPreset = settings.widgets?.clockPreset || legacyLayoutPreset;
-  const weatherPreset = settings.widgets?.weatherPreset || legacyLayoutPreset;
+  // Use workspace-specific widget settings when workspace widgets are enabled
+  const effectiveWidgetsSettings = workspaceWidgetsEnabled
+    ? activeWidgetsProfile
+    : (settings.widgets || {});
+  
+  const legacyLayoutPreset = effectiveWidgetsSettings?.layoutPreset || "preset1";
+  const clockPreset = effectiveWidgetsSettings?.clockPreset || legacyLayoutPreset;
+  const weatherPreset = effectiveWidgetsSettings?.weatherPreset || legacyLayoutPreset;
 
   const rawMirror = !!activeAppearance?.mirrorLayout;
   const isMirrorLayout = rawMirror;
 
   const baseWidgetSettings = {
-    ...settings.widgets,
+    ...effectiveWidgetsSettings,
     colorPrimary: widgetThemeTokens.textColor,
     colorAccent: widgetThemeTokens.accentColor,
     resolvedFontFamily: widgetThemeTokens.fontFamily,
     isMirrorLayout,
-    verticalOffset: Number(settings?.widgets?.verticalOffset ?? 0),
+    verticalOffset: Number(effectiveWidgetsSettings?.verticalOffset ?? 0),
   };
 
   const resolvedClockSettings = {
     ...baseWidgetSettings,
     layoutPreset: clockPreset,
+    showSeconds: effectiveWidgetsSettings?.showSeconds !== false,
+    twentyFourHour: effectiveWidgetsSettings?.twentyFourHour !== false,
+    subTimezones: effectiveWidgetsSettings?.subTimezones || [],
   };
 
   const resolvedWeatherSettings = {
     ...baseWidgetSettings,
     layoutPreset: weatherPreset,
+    showDetailsOnHover:
+      effectiveWidgetsSettings?.weatherShowDetailsOnHover !== undefined
+        ? effectiveWidgetsSettings.weatherShowDetailsOnHover
+        : true,
+    units: effectiveWidgetsSettings?.units || 'metric',
   };
+  // Resolve glow color for glow shadows based on current workspace
+  // Anchored workspace uses default glow; other workspaces use their specific glow color
+  const resolvedGlowColorForShadows = useMemo(() => {
+    // If workspace theming is disabled, always use master override glow color
+    if (!workspaceThemingEnabled) {
+      return settings?.speedDial?.glowColor || '#00ffff66';
+    }
+    
+    const anchoredWorkspaceId = settings?.speedDial?.anchoredWorkspaceId || null;
+    const workspaceId = selectedWorkspaceId || activeWorkspaceId;
+    
+    // If no workspace or it's the anchored workspace, use default glow
+    if (!workspaceId || (anchoredWorkspaceId && workspaceId === anchoredWorkspaceId)) {
+      return settings?.speedDial?.glowColor || '#00ffff66';
+    }
+    
+    // Otherwise, use workspace-specific glow color if available, otherwise default
+    const workspaceGlowColors = settings?.speedDial?.workspaceGlowColors || {};
+    return workspaceGlowColors[workspaceId] || settings?.speedDial?.glowColor || '#00ffff66';
+  }, [selectedWorkspaceId, activeWorkspaceId, workspaceThemingEnabled, settings?.speedDial?.glowColor, settings?.speedDial?.workspaceGlowColors, settings?.speedDial?.anchoredWorkspaceId]);
+
+  const resolvedNotesSettings = {
+    ...baseWidgetSettings,
+    autoExpandOnHover: !!settings?.widgets?.notesAutoExpandOnHover,
+    glowColor: resolvedGlowColorForShadows,
+  };
+  const notesEntries = Array.isArray(settings?.widgets?.notesEntries)
+    ? settings.widgets.notesEntries
+    : [];
+  const activeNoteId =
+    settings?.widgets?.notesActiveId ||
+    (notesEntries.length ? notesEntries[0].id : null);
+  const activeNote =
+    notesEntries.find((n) => n.id === activeNoteId) || notesEntries[0] || null;
+  const notesFilterMode = settings?.widgets?.notesFilterMode || "all";
+  const notesFilterWorkspaceId =
+    settings?.widgets?.notesFilterWorkspaceId || null;
+  const emailCenterFilterMode = settings?.widgets?.emailCenterFilterMode || "all";
+  const emailCenterFilterWorkspaceId =
+    settings?.widgets?.emailCenterFilterWorkspaceId || null;
+  const showWorkspaceEmailListInsteadOfNotes = settings?.widgets?.showWorkspaceEmailListInsteadOfNotes || false;
+  const resolvedWorkspaceForFilter = useMemo(() => {
+    return (
+      activeWorkspaceId ||
+      lastHardWorkspaceId ||
+      (workspaces && workspaces.length ? workspaces[0].id : null)
+    );
+  }, [activeWorkspaceId, lastHardWorkspaceId, workspaces]);
+  const filteredNotesEntries = useMemo(() => {
+    if (!Array.isArray(notesEntries) || !notesEntries.length) return [];
+
+    let filtered = [];
+    if (notesFilterMode === "perWorkspace") {
+      if (!resolvedWorkspaceForFilter) filtered = notesEntries;
+      else {
+        const folder = getWorkspaceFolderName(
+          resolvedWorkspaceForFilter,
+          workspaces,
+        );
+        if (folder) {
+          filtered = notesEntries.filter(
+            (note) => (note.folder || "") === folder,
+          );
+        } else {
+          filtered = notesEntries.filter(
+            (note) => (note.workspaceId || null) === resolvedWorkspaceForFilter,
+          );
+        }
+      }
+    } else if (notesFilterMode === "manual") {
+      if (!notesFilterWorkspaceId) filtered = notesEntries;
+      else {
+        const folder = getWorkspaceFolderName(
+          notesFilterWorkspaceId,
+          workspaces,
+        );
+        if (folder) {
+          filtered = notesEntries.filter(
+            (note) => (note.folder || "") === folder,
+          );
+        } else {
+          filtered = notesEntries.filter(
+            (note) => (note.workspaceId || null) === notesFilterWorkspaceId,
+          );
+        }
+      }
+    } else if (notesFilterMode === "none") {
+      filtered = notesEntries.filter(
+        (note) =>
+          !note.workspaceId &&
+          (note.folder || "") === "unassigned",
+      );
+    } else {
+      // "all" – whole vault
+      filtered = notesEntries;
+    }
+
+    // Sort: pinned notes first, then by updatedAt (most recent first)
+    return filtered.sort((a, b) => {
+      const aPinned = !!a.pinned;
+      const bPinned = !!b.pinned;
+      if (aPinned !== bPinned) {
+        return aPinned ? -1 : 1;
+      }
+      const aTime = a.updatedAt || a.createdAt || 0;
+      const bTime = b.updatedAt || b.createdAt || 0;
+      return bTime - aTime;
+    });
+  }, [
+    notesEntries,
+    notesFilterMode,
+    notesFilterWorkspaceId,
+    resolvedWorkspaceForFilter,
+    workspaces,
+  ]);
+  const editingNoteId = notesCenterNoteId || (notesInlineEditing ? activeNoteId : null);
+  const editingNote =
+    notesEntries.find((note) => note.id === editingNoteId) || null;
+  const hoverPreviewNote =
+    notesHoverPreviewId &&
+      settings?.widgets?.notesHoverPreview &&
+      !notesCenterNoteId
+      ? notesEntries.find((note) => note.id === notesHoverPreviewId) || null
+      : null;
+  useEffect(() => {
+    if (notesHoverPreviewId && !hoverPreviewNote) {
+      setNotesHoverPreviewId(null);
+    }
+  }, [notesHoverPreviewId, hoverPreviewNote]);
 
   const showClockWeatherSeparator = !!settings?.widgets?.clockWeatherSeparator;
   const accentRgb = hexToRgb(widgetThemeTokens.accentColor || "#00ffff") || {
@@ -3702,12 +5075,437 @@ function App() {
         : "mt-4";
   const weatherMarginStyle =
     weatherPreset === "preset3" ? { marginTop: "-6px" } : undefined;
+  // Use workspace-specific widget visibility when workspace widgets are enabled
+  const baseShowNotesWidget = workspaceWidgetsEnabled
+    ? (activeWidgetsProfile?.enableNotes !== false)
+    : (settings?.widgets?.enableNotes !== false);
+  const baseShowEmailWidget = workspaceWidgetsEnabled
+    ? (activeWidgetsProfile?.enableEmail !== false)
+    : (settings?.widgets?.enableEmail !== false);
+  
+  // Apply widget alternator mode if active - only show one widget at a time
+  const showNotesWidget = widgetAlternatorMode === 'none' 
+    ? baseShowNotesWidget
+    : widgetAlternatorMode === 'notes-only';
+  const showEmailWidget = widgetAlternatorMode === 'none'
+    ? baseShowEmailWidget
+    : widgetAlternatorMode === 'email-only';
+  
+  // Auto-activate alternator mode when both widgets are enabled (so they can toggle instead of stacking)
+  useEffect(() => {
+    if (baseShowNotesWidget && baseShowEmailWidget && widgetAlternatorMode === 'none') {
+      // Both widgets are enabled, activate alternator starting with notes
+      setWidgetAlternatorMode('notes-only');
+      try {
+        localStorage.setItem("vstart-widget-alternator-mode", 'notes-only');
+      } catch {}
+    } else if (!baseShowNotesWidget && !baseShowEmailWidget && widgetAlternatorMode !== 'none') {
+      // Neither widget enabled, reset to none
+      setWidgetAlternatorMode('none');
+      try {
+        localStorage.setItem("vstart-widget-alternator-mode", 'none');
+      } catch {}
+    } else if ((!baseShowNotesWidget && widgetAlternatorMode === 'notes-only') || 
+               (!baseShowEmailWidget && widgetAlternatorMode === 'email-only')) {
+      // Current alternator mode points to disabled widget, switch to the other or none
+      if (baseShowNotesWidget) {
+        setWidgetAlternatorMode('notes-only');
+        try {
+          localStorage.setItem("vstart-widget-alternator-mode", 'notes-only');
+        } catch {}
+      } else if (baseShowEmailWidget) {
+        setWidgetAlternatorMode('email-only');
+        try {
+          localStorage.setItem("vstart-widget-alternator-mode", 'email-only');
+        } catch {}
+      } else {
+        setWidgetAlternatorMode('none');
+        try {
+          localStorage.setItem("vstart-widget-alternator-mode", 'none');
+        } catch {}
+      }
+    }
+  }, [baseShowNotesWidget, baseShowEmailWidget, widgetAlternatorMode]);
+  const showClockWidget = workspaceWidgetsEnabled
+    ? (activeWidgetsProfile?.enableClock !== false)
+    : (settings?.widgets?.enableClock !== false);
+  const showWeatherWidget = workspaceWidgetsEnabled
+    ? (activeWidgetsProfile?.enableWeather !== false)
+    : (settings?.widgets?.enableWeather !== false);
+  const showMusicPlayer = workspaceWidgetsEnabled
+    ? (activeWidgetsProfile?.enableMusicPlayer !== false)
+    : (settings?.widgets?.enableMusicPlayer !== false);
+  const determineNotesLocation = useCallback(
+    (note) => {
+      const mode = settings?.widgets?.notesMode || "auto";
+      if (mode === "center") return "center";
+      if (mode === "widget") return "widget";
+      const contentLength = (note?.content || "").length;
+      return contentLength > 280 ? "center" : "widget";
+    },
+    [settings?.widgets?.notesMode],
+  );
+  const activeNoteLocation = notesCenterNoteId
+    ? "center"
+    : notesInlineEditing
+      ? "widget"
+      : determineNotesLocation(activeNote);
+  const defaultWorkspaceForNewNote = useMemo(() => {
+    if (notesFilterMode === "perWorkspace") {
+      return resolvedWorkspaceForFilter || null;
+    }
+    if (notesFilterMode === "manual") {
+      return notesFilterWorkspaceId || null;
+    }
+    if (notesFilterMode === "none") {
+      return null;
+    }
+    return resolvedWorkspaceForFilter || null;
+  }, [notesFilterMode, notesFilterWorkspaceId, resolvedWorkspaceForFilter]);
+  const workspaceMetaMap = useMemo(() => {
+    const glowColors = settings?.speedDial?.workspaceGlowColors || {};
+    const accent = widgetThemeTokens.accentColor || "#00ffff";
+    const meta = {};
+    (workspaces || []).forEach((ws) => {
+      meta[ws.id] = {
+        name: ws.name || "Workspace",
+        icon: ws.icon || "Layers",
+        color: glowColors[ws.id] || accent,
+      };
+    });
+    return meta;
+  }, [
+    workspaces,
+    settings?.speedDial?.workspaceGlowColors,
+    widgetThemeTokens.accentColor,
+  ]);
+
+  useEffect(() => {
+    // Folder mounting is now implicit via notesFilterMode + workspace,
+    // so we no longer track a separate active folder here.
+    if (!Array.isArray(notesEntries) || !notesEntries.length) {
+      setNotesActiveFolder("");
+      return;
+    }
+    if (notesFilterMode === "perWorkspace" || notesFilterMode === "manual") {
+      const targetId =
+        notesFilterMode === "perWorkspace"
+          ? resolvedWorkspaceForFilter
+          : notesFilterWorkspaceId;
+      if (!targetId) {
+        setNotesActiveFolder("");
+        return;
+      }
+      const folder = getWorkspaceFolderName(targetId, workspaces);
+      setNotesActiveFolder(folder || "");
+      return;
+    }
+    if (notesFilterMode === "none") {
+      setNotesActiveFolder("unassigned");
+      return;
+    }
+    // "all" – no active folder
+    setNotesActiveFolder("");
+  }, [
+    notesEntries,
+    notesFilterMode,
+    notesFilterWorkspaceId,
+    resolvedWorkspaceForFilter,
+    workspaces,
+  ]);
+  useEffect(() => {
+    if (!Array.isArray(settings?.widgets?.notesEntries)) return;
+    if (!workspaces || !workspaces.length) return;
+    setSettings((prev) => {
+      const widgets = prev.widgets || {};
+      const entries = Array.isArray(widgets.notesEntries)
+        ? widgets.notesEntries
+        : [];
+      if (!entries.length) return prev;
+      const normalized = normalizeVaultNotes(entries, workspaces);
+      let changed = normalized.length !== entries.length;
+      if (!changed) {
+        for (let i = 0; i < entries.length; i += 1) {
+          const a = entries[i];
+          const b = normalized[i];
+          if (
+            !a ||
+            !b ||
+            a.id !== b.id ||
+            (a.workspaceId || null) !== (b.workspaceId || null) ||
+            (a.folder || "") !== (b.folder || "")
+          ) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (!changed) return prev;
+      return {
+        ...prev,
+        widgets: {
+          ...widgets,
+          notesEntries: normalized,
+        },
+      };
+    });
+  }, [workspaces, settings?.widgets?.notesEntries]);
+
+  // Listen for extension-driven link notes (requires defaultWorkspaceForNewNote)
+  useEffect(() => {
+    const handler = (e) => {
+      const detail = e && e.detail ? e.detail : {};
+      const rawUrl = String(detail.url || "").trim();
+      const body = String(detail.body || "").trim();
+      if (!rawUrl) return;
+      const title = String(detail.title || "").trim() || rawUrl;
+      const workspaceIdFromExt =
+        typeof detail.workspaceId === "string" && detail.workspaceId
+          ? detail.workspaceId
+          : null;
+      const effectiveWorkspaceId =
+        workspaceIdFromExt ||
+        (settings?.widgets?.notesMode === "none"
+          ? null
+          : defaultWorkspaceForNewNote || null);
+      setSettings((prev) => {
+        const widgets = prev.widgets || {};
+        const entries = Array.isArray(widgets.notesEntries)
+          ? widgets.notesEntries
+          : [];
+        const combinedContent = body ? `${body}\n\n${rawUrl}` : rawUrl;
+        const vaults = Array.isArray(widgets.notesVaults)
+          ? widgets.notesVaults
+          : [];
+        const vaultLabelRaw =
+          typeof detail.vaultLabel === "string" &&
+            detail.vaultLabel.trim()
+            ? detail.vaultLabel.trim()
+            : null;
+        let vaultId = widgets.notesVaultActiveId || null;
+        if (vaultLabelRaw && vaults.length) {
+          const match = vaults.find(
+            (v) =>
+              String(v.name || "")
+                .trim()
+                .toLowerCase() === vaultLabelRaw.toLowerCase(),
+          );
+          if (match) {
+            vaultId = match.id;
+          }
+        }
+        const currentFolderPath = (() => {
+          if (effectiveWorkspaceId) {
+            const folder = getWorkspaceFolderName(
+              effectiveWorkspaceId,
+              workspaces,
+            );
+            return folder || "";
+          }
+          return "unassigned";
+        })();
+        const newNote = {
+          id: `note-link-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          title,
+          manualTitle: !!title,
+          content: combinedContent,
+          updatedAt: Date.now(),
+          workspaceId: effectiveWorkspaceId,
+          vaultId: vaultId || null,
+          linkUrl: rawUrl,
+          linkOnly: !body,
+          folder: currentFolderPath,
+        };
+        return {
+          ...prev,
+          widgets: {
+            ...widgets,
+            notesEntries: [newNote, ...entries],
+            notesActiveId: newNote.id,
+            notesContent: combinedContent,
+          },
+        };
+      });
+    };
+    window.addEventListener("ext-add-note-link", handler);
+    return () => window.removeEventListener("ext-add-note-link", handler);
+  }, [defaultWorkspaceForNewNote, settings?.widgets?.notesMode, setSettings, workspaces]);
+
+  useEffect(() => {
+    if (!editingNoteId || !editingNote) {
+      notesEditingIdRef.current = null;
+      if (!notesInlineEditing && !notesCenterNoteId) {
+        setNotesDraft("");
+      }
+      return;
+    }
+    if (notesEditingIdRef.current !== editingNoteId) {
+      notesEditingIdRef.current = editingNoteId;
+      setNotesDraft(editingNote?.content || "");
+    }
+  }, [editingNoteId, editingNote, notesInlineEditing, notesCenterNoteId]);
+
+  const commitNoteDraft = useCallback((noteId, content) => {
+    if (!noteId) return;
+    const raw = String(content || "");
+    const trimmed = raw.trim();
+
+    let deletedNote = null;
+    setSettings((prev) => {
+      const entries = Array.isArray(prev.widgets?.notesEntries)
+        ? prev.widgets.notesEntries
+        : [];
+      const existing = entries.find((note) => note.id === noteId) || null;
+      if (!existing) return prev;
+
+      // Only auto-delete when the note previously had content and user cleared it.
+      if (!trimmed && String(existing.content || "").trim()) {
+        deletedNote = existing;
+        const remaining = entries.filter((note) => note.id !== noteId);
+        const prevActiveId = prev.widgets?.notesActiveId || null;
+        const nextActiveId =
+          prevActiveId === noteId ? (remaining[0]?.id || null) : prevActiveId;
+        return {
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesEntries: remaining,
+            notesActiveId: nextActiveId,
+            notesContent: "",
+          },
+        };
+      }
+
+      const nextEntries = entries.map((note) => {
+        if (note.id !== noteId) return note;
+        const manualTitle = note.manualTitle === true;
+        const autoTitle = deriveNoteTitle(raw, note.title || "Untitled note");
+        const updated = {
+          ...note,
+          content: raw,
+          title: manualTitle ? (note.title || autoTitle) : autoTitle,
+          updatedAt: Date.now(),
+          linkOnly: note.linkUrl
+            ? trimmed === String(note.linkUrl || "").trim()
+            : false,
+        };
+        if (updated.vaultId) {
+          saveNoteToVault(updated.vaultId, updated);
+        }
+        return updated;
+      });
+      return {
+        ...prev,
+        widgets: {
+          ...(prev.widgets || {}),
+          notesEntries: nextEntries,
+          notesContent: raw,
+        },
+      };
+    });
+    if (deletedNote) {
+      const vaultId =
+        deletedNote.vaultId ||
+        settings?.widgets?.notesVaultActiveId ||
+        "default";
+      if (vaultId) {
+        deleteNoteFromVault(vaultId, deletedNote.id, deletedNote.folder || "");
+      }
+    }
+  }, [settings?.widgets?.notesVaultActiveId]);
+
+  useEffect(() => {
+    if (!editingNoteId) return;
+    const handle = setTimeout(() => {
+      commitNoteDraft(editingNoteId, notesDraft || "");
+    }, 180);
+    return () => clearTimeout(handle);
+  }, [editingNoteId, notesDraft, commitNoteDraft]);
+
+  useEffect(() => {
+    if (notesEntries.length) return;
+    setNotesInlineEditing(false);
+    setNotesCenterNoteId(null);
+    setNotesDraft("");
+    notesEditingIdRef.current = null;
+  }, [notesEntries.length]);
+
+  useEffect(() => {
+    if (!settings?.widgets?.notesHoverPreview || notesCenterNoteId) {
+      setNotesHoverPreviewId(null);
+    }
+  }, [settings?.widgets?.notesHoverPreview, notesCenterNoteId]);
+
+  const refreshNotesFromVault = useCallback(
+    async (allowWhileEditing = false) => {
+      const enabled = settings?.widgets?.enableNotes !== false;
+      const vaultId = settings?.widgets?.notesVaultActiveId || "default";
+      if (!enabled || !vaultId) return;
+      if (!allowWhileEditing && (notesInlineEditing || notesCenterNoteId)) {
+        return;
+      }
+      try {
+        const synced = await loadNotesFromVault(vaultId);
+        if (!Array.isArray(synced)) return;
+        const mapped = normalizeVaultNotes(synced, workspaces);
+        setSettings((prev) => {
+          const widgets = prev.widgets || {};
+          const prevActiveId = widgets.notesActiveId || null;
+          const nextActiveId =
+            prevActiveId && mapped.some((n) => n.id === prevActiveId)
+              ? prevActiveId
+              : mapped[0]?.id || null;
+          const nextActiveNote =
+            nextActiveId &&
+            mapped.find((n) => n.id === nextActiveId);
+          return {
+            ...prev,
+            widgets: {
+              ...widgets,
+              notesEntries: mapped,
+              notesActiveId: nextActiveId,
+              notesContent: nextActiveNote?.content || "",
+            },
+          };
+        });
+      } catch {
+        // Fail-soft: keep local state if vault refresh fails
+      }
+    },
+    [
+      settings?.widgets?.enableNotes,
+      settings?.widgets?.notesVaultActiveId,
+      notesInlineEditing,
+      notesCenterNoteId,
+      workspaces,
+      setSettings,
+    ],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+    const tick = async () => {
+      await refreshNotesFromVault(false);
+      if (!cancelled) {
+        timer = setTimeout(tick, 12000);
+      }
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [refreshNotesFromVault]);
 
   // Master layout with temporary (non-persistent) Modern override support
   const [tempModernOverride, setTempModernOverride] = useState(false);
+  const [notesForceModern, setNotesForceModern] = useState(false);
+  const notesModernOverrideRef = useRef(false);
   const baseMasterLayout =
     activeAppearance?.masterLayout === "classic" ? "classic" : "modern";
-  const masterLayoutMode = tempModernOverride ? "modern" : baseMasterLayout;
+  const masterLayoutMode =
+    tempModernOverride || notesForceModern ? "modern" : baseMasterLayout;
   const isClassicLayout = masterLayoutMode === "classic";
   // Track current effective layout and manage temporary overrides to Modern when AI/Inline are active
   const layoutOverrideRef = useRef({ active: false, prev: null });
@@ -3715,6 +5513,35 @@ function App() {
   useEffect(() => {
     currentLayoutRef.current = masterLayoutMode;
   }, [masterLayoutMode]);
+  useEffect(() => {
+    const base = activeAppearance?.masterLayout === "classic" ? "classic" : "modern";
+    if (notesCenterNoteId && base === "classic" && !notesModernOverrideRef.current) {
+      notesModernOverrideRef.current = true;
+      setNotesForceModern(true);
+    } else if (!notesCenterNoteId && notesModernOverrideRef.current) {
+      notesModernOverrideRef.current = false;
+      setNotesForceModern(false);
+    } else if (base === "modern" && notesForceModern) {
+      notesModernOverrideRef.current = false;
+      setNotesForceModern(false);
+    }
+  }, [notesCenterNoteId, activeAppearance?.masterLayout, notesForceModern]);
+
+  // Temporarily switch to modern layout when email is opened in center column
+  const emailModernOverrideRef = useRef(false);
+  useEffect(() => {
+    const base = activeAppearance?.masterLayout === "classic" ? "classic" : "modern";
+    if (emailCenterEmailId && base === "classic" && !emailModernOverrideRef.current) {
+      emailModernOverrideRef.current = true;
+      setTempModernOverride(true);
+    } else if (!emailCenterEmailId && emailModernOverrideRef.current) {
+      emailModernOverrideRef.current = false;
+      setTempModernOverride(false);
+    } else if (base === "modern" && tempModernOverride && emailModernOverrideRef.current) {
+      emailModernOverrideRef.current = false;
+      setTempModernOverride(false);
+    }
+  }, [emailCenterEmailId, activeAppearance?.masterLayout, tempModernOverride]);
   const dialOffsetModern = Number(settings?.speedDial?.verticalOffset || 0);
   const dialOffsetClassic = Number(settings?.speedDial?.landscapeOffset || 0);
   const dialVerticalOffsetPx = isClassicLayout ? 0 : dialOffsetModern;
@@ -3800,6 +5627,8 @@ function App() {
       onTitleChange={handleWorkspaceTitleChange}
       workspaces={workspaces}
       activeWorkspaceId={activeWorkspaceId}
+      appearanceWorkspacesEnabled={appearanceWorkspacesEnabled}
+      workspaceThemingEnabled={workspaceThemingEnabled}
       onWorkspaceSelect={handleWorkspaceSelect}
       onWorkspaceDoubleSelect={handleWorkspaceDoubleSelect}
       onToggleAutoUrlDoubleClick={(val) =>
@@ -3857,9 +5686,57 @@ function App() {
     />
   );
 
+  const currentSpeedDialBlurPx = useMemo(() => {
+    // When appearance workspaces are disabled, ignore workspace-specific blur overrides
+    // and always use the master blur value
+    if (!appearanceWorkspacesEnabled) {
+      return Math.max(0, Number(settings?.speedDial?.blurPx ?? 0));
+    }
+    const workspaceOverrides = settings?.speedDial?.workspaceBlurOverrides;
+    // Use hardWorkspaceId (from URL) to match what the speed dial actually uses
+    const workspaceIdToCheck = hardWorkspaceId || activeWorkspaceId;
+    let override = null;
+    if (
+      workspaceOverrides &&
+      typeof workspaceOverrides === "object" &&
+      workspaceIdToCheck &&
+      workspaceOverrides[workspaceIdToCheck] !== undefined
+    ) {
+      const candidate = Number(workspaceOverrides[workspaceIdToCheck]);
+      if (Number.isFinite(candidate)) {
+        override = candidate;
+      }
+    }
+    const baseBlur =
+      override !== null
+        ? override
+        : Number(settings?.speedDial?.blurPx ?? 0);
+    return Math.max(0, baseBlur);
+  }, [
+    appearanceWorkspacesEnabled,
+    settings?.speedDial?.blurPx,
+    settings?.speedDial?.workspaceBlurOverrides,
+    hardWorkspaceId,
+    activeWorkspaceId,
+  ]);
+
+  // Search bar blur resolution
+  // Note: Search bar blur is part of appearance workspaces, not workspace theming.
+  // It works independently of the workspace theming toggle and respects appearance workspace settings.
   const searchBarBlurPx = useMemo(() => {
+    // If linked to speed dial, use speed dial blur
+    if (settings?.appearance?.searchBarLinkSpeedDialBlur) {
+      return currentSpeedDialBlurPx;
+    }
+    // Resolve from active appearance (which comes from appearance workspaces)
+    // This works correctly regardless of workspace theming state
     return resolveSearchBarBlurPx(activeAppearance?.searchBar || {});
-  }, [activeAppearance?.searchBar?.blurPx, activeAppearance?.searchBar?.blurPreset]);
+  }, [
+    activeAppearance?.searchBar?.blurPx,
+    activeAppearance?.searchBar?.blurPreset,
+    settings?.appearance?.searchBarLinkSpeedDialBlur,
+    currentSpeedDialBlurPx,
+  ]);
 
   useEffect(() => {
     if (!activeAppearance?.suggestionsMatchBarBlur) return;
@@ -3912,6 +5789,7 @@ function App() {
   const musicAppearanceCfg = activeAppearance?.music || {};
   const musicMatchWorkspaceText = !!musicAppearanceCfg.matchWorkspaceTextColor;
   const musicMatchSearchBarBlur = !!musicAppearanceCfg.matchSearchBarBlur;
+  const musicLinkSpeedDialBlur = !!musicAppearanceCfg.linkSpeedDialBlur;
   const resolvedMusicStyleConfig = (() => {
     const base = musicMatchWorkspaceText
       ? {
@@ -3920,21 +5798,455 @@ function App() {
         resolvedAccentColor: widgetThemeTokens.accentColor,
       }
       : musicAppearanceCfg;
+    let blur = Number.isFinite(Number(musicAppearanceCfg.blurPx))
+      ? Number(musicAppearanceCfg.blurPx)
+      : 12;
     if (musicMatchSearchBarBlur && Number.isFinite(searchBarBlurPx)) {
-      return { ...base, blurPx: searchBarBlurPx };
+      blur = searchBarBlurPx;
     }
-    return base;
+    if (musicLinkSpeedDialBlur) {
+      blur = currentSpeedDialBlurPx;
+    }
+    // Include resolved glow color for glow shadows (workspace-specific or default)
+    return { ...base, blurPx: blur, glowColor: resolvedGlowColorForShadows };
   })();
+  const handleNoteCreate = useCallback(
+    (location = "widget") => {
+      const activeVaultId =
+        settings?.widgets?.notesVaultActiveId || "default";
+      const workspaceForNote = defaultWorkspaceForNewNote || null;
+      const workspaceFolder =
+        workspaceForNote && workspaces.length
+          ? getWorkspaceFolderName(workspaceForNote, workspaces)
+          : "";
+      const currentFolderPath =
+        workspaceFolder ||
+        (workspaceForNote ? "" : "unassigned");
+      const newNote = {
+        id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: "New note",
+        content: "",
+        updatedAt: Date.now(),
+        workspaceId: defaultWorkspaceForNewNote || null,
+        vaultId: activeVaultId,
+        folder: currentFolderPath,
+      };
+      setSettings((prev) => {
+        const entries = Array.isArray(prev.widgets?.notesEntries)
+          ? prev.widgets.notesEntries
+          : [];
+        return {
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesEntries: [newNote, ...entries],
+            notesActiveId: newNote.id,
+            notesContent: "",
+          },
+        };
+      });
+      setNotesDraft("");
+      if (location === "center") {
+        setNotesCenterNoteId(newNote.id);
+        setNotesInlineEditing(false);
+      } else {
+        setNotesCenterNoteId(null);
+        setNotesInlineEditing(true);
+      }
+      return newNote.id;
+    },
+    [
+      defaultWorkspaceForNewNote,
+      settings?.widgets?.notesVaultActiveId,
+      settings?.widgets?.notesPinnedFolder,
+      notesActiveFolder,
+      workspaces,
+    ],
+  );
+
+  const handleNoteSelect = useCallback(
+    (id, preferredLocation = null) => {
+      const note = notesEntries.find((n) => n.id === id);
+      if (!note) return;
+      // Any explicit selection should clear hover preview overlays
+      setNotesHoverPreviewId(null);
+      setSettings((prev) => ({
+        ...prev,
+        widgets: { ...(prev.widgets || {}), notesActiveId: id },
+      }));
+      const targetLocation = preferredLocation || determineNotesLocation(note);
+      if (targetLocation === "center") {
+        setNotesCenterNoteId(id);
+        setNotesInlineEditing(false);
+      } else {
+        setNotesCenterNoteId(null);
+        setNotesInlineEditing(true);
+      }
+      setNotesDraft(note.content || "");
+    },
+    [notesEntries, determineNotesLocation],
+  );
+
+  const handleNoteTitleChange = useCallback((noteId, title) => {
+    if (!noteId) return;
+    const raw = String(title || "");
+    const trimmed = raw.trim();
+    setSettings((prev) => {
+      const entries = Array.isArray(prev.widgets?.notesEntries)
+        ? prev.widgets.notesEntries
+        : [];
+      const nextEntries = entries.map((note) => {
+        if (note.id !== noteId) return note;
+        return {
+          ...note,
+          title: trimmed,
+          manualTitle: true,
+        };
+      });
+      return {
+        ...prev,
+        widgets: {
+          ...(prev.widgets || {}),
+          notesEntries: nextEntries,
+        },
+      };
+    });
+  }, []);
+
+  const handleDeleteNoteById = useCallback(
+    (noteId) => {
+      if (!noteId) return;
+      setSettings((prev) => {
+        const entries = Array.isArray(prev.widgets?.notesEntries)
+          ? prev.widgets.notesEntries
+          : [];
+        const remaining = entries.filter((note) => note.id !== noteId);
+        const prevActiveId = prev.widgets?.notesActiveId || null;
+        const nextActiveId =
+          prevActiveId === noteId ? (remaining[0]?.id || null) : prevActiveId;
+        const nextActiveNote =
+          remaining.find((n) => n.id === nextActiveId) || null;
+        return {
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesEntries: remaining,
+            notesActiveId: nextActiveId,
+            notesContent: nextActiveNote?.content || "",
+          },
+        };
+      });
+      const note = notesEntries.find((n) => n.id === noteId);
+      if (note?.vaultId) {
+        deleteNoteFromVault(
+          note.vaultId,
+          note.id,
+          note.folder || "",
+        );
+      }
+      if (notesCenterNoteId === noteId) {
+        setNotesCenterNoteId(null);
+      }
+      if (notesEditingIdRef.current === noteId) {
+        notesEditingIdRef.current = null;
+        setNotesInlineEditing(false);
+        setNotesDraft("");
+      }
+    },
+    [setSettings, notesCenterNoteId, notesEntries],
+  );
+
+  const handleInlineBack = useCallback(() => {
+    if (notesInlineEditing && editingNoteId && !(notesDraft || "").trim()) {
+      handleDeleteNoteById(editingNoteId);
+    }
+    setNotesInlineEditing(false);
+    notesEditingIdRef.current = null;
+    setNotesDraft("");
+  }, [notesInlineEditing, editingNoteId, notesDraft]);
+
+  const handleCenterClose = useCallback(() => {
+    if (notesCenterNoteId && editingNoteId === notesCenterNoteId && !(notesDraft || "").trim()) {
+      handleDeleteNoteById(notesCenterNoteId);
+    }
+    setNotesCenterNoteId(null);
+    setNotesInlineEditing(false);
+    notesEditingIdRef.current = null;
+    setNotesDraft("");
+  }, [notesCenterNoteId, editingNoteId, notesDraft]);
+
+  const handlePromoteActiveNoteToCenter = useCallback(() => {
+    if (!activeNoteId) return;
+    setNotesCenterNoteId(activeNoteId);
+    setNotesInlineEditing(false);
+  }, [activeNoteId]);
+  
+  const handleEmailClick = useCallback((emailId, accountEmail) => {
+    if (!emailId) {
+      setEmailCenterEmailId(null)
+      setEmailCenterEmailAccount(null)
+      return
+    }
+    setEmailCenterEmailId(emailId)
+    setEmailCenterEmailAccount(accountEmail)
+    setEmailsCenterOpen(true)
+  }, [])
+
+  const handlePromoteEmailToCenter = useCallback(() => {
+    setEmailsCenterOpen(true);
+    // Temporarily switch to modern layout if in classic
+    const currLayout = baseMasterLayout;
+    if (currLayout === "classic" && !layoutOverrideRef.current.active) {
+      layoutOverrideRef.current = { active: true, prev: "classic" };
+      try {
+        localStorage.setItem("lastManualMasterLayout", "classic");
+      } catch { }
+      setTempModernOverride(true);
+    }
+  }, [baseMasterLayout]);
+  
+  // Widget alternator toggle: cycles through notes-only <-> email-only (never show both)
+  // Only cycles through modes that are possible based on base widget settings
+  const handleWidgetAlternatorToggle = useCallback(() => {
+    setWidgetAlternatorMode(prev => {
+      // Determine which modes are available
+      const canShowNotes = baseShowNotesWidget;
+      const canShowEmail = baseShowEmailWidget;
+      
+      if (!canShowNotes && !canShowEmail) {
+        // Neither widget can be shown, stay at 'none'
+        return 'none';
+      }
+      
+      // Build cycle based on available widgets - only one at a time
+      let cycle = [];
+      if (canShowNotes && canShowEmail) {
+        // When both are available, alternate between them
+        cycle = ['notes-only', 'email-only'];
+      } else if (canShowNotes) {
+        cycle = ['notes-only'];
+      } else if (canShowEmail) {
+        cycle = ['email-only'];
+      }
+      
+      if (cycle.length === 0) return 'none';
+      
+      // If currently at 'none', start at first widget
+      if (prev === 'none') {
+        const next = cycle[0];
+        try {
+          localStorage.setItem("vstart-widget-alternator-mode", next);
+        } catch {}
+        return next;
+      }
+      
+      // Find current position in cycle and toggle to the other
+      const currentIndex = cycle.indexOf(prev);
+      if (currentIndex >= 0) {
+        const nextIndex = (currentIndex + 1) % cycle.length;
+        const next = cycle[nextIndex];
+        try {
+          localStorage.setItem("vstart-widget-alternator-mode", next);
+        } catch {}
+        return next;
+      }
+      
+      // If prev mode not in cycle, start at first
+      const next = cycle[0];
+      try {
+        localStorage.setItem("vstart-widget-alternator-mode", next);
+      } catch {}
+      return next;
+    });
+  }, [baseShowNotesWidget, baseShowEmailWidget]);
+  
+  // Persist widget alternator mode
+  useEffect(() => {
+    try {
+      localStorage.setItem("vstart-widget-alternator-mode", widgetAlternatorMode);
+    } catch {}
+  }, [widgetAlternatorMode]);
+  
+  const handleEmailCenterClose = useCallback(() => {
+    setEmailsCenterOpen(false);
+    // Restore layout if was temporarily switched
+    if (
+      layoutOverrideRef.current.active &&
+      layoutOverrideRef.current.prev === "classic"
+    ) {
+      layoutOverrideRef.current = { active: false, prev: null };
+      setTempModernOverride(false);
+    }
+  }, []);
+  const handleNoteHoverPreview = useCallback(
+    (noteId) => {
+      setNotesHoverPreviewId((prev) => {
+        if (!settings?.widgets?.notesHoverPreview || notesCenterNoteId) {
+          return prev === null ? prev : null;
+        }
+        const next = noteId || null;
+        return next === prev ? prev : next;
+      });
+    },
+    [settings?.widgets?.notesHoverPreview, notesCenterNoteId],
+  );
+
+  const handleEmailCenterFilterChange = useCallback((mode, workspaceId = null) => {
+    setSettings((prev) => ({
+      ...prev,
+      widgets: {
+        ...(prev.widgets || {}),
+        emailCenterFilterMode: mode || "all",
+        emailCenterFilterWorkspaceId: workspaceId || null,
+      },
+    }));
+  }, []);
+
+  const handleNotesFilterChange = useCallback((mode, workspaceId = null) => {
+    const allowed = new Set(["perWorkspace", "manual", "none"]);
+    const normalized = allowed.has(mode) ? mode : "all";
+    const targetWorkspaceId = normalized === "manual" ? workspaceId || null : null;
+    setSettings((prev) => ({
+      ...prev,
+      widgets: {
+        ...(prev.widgets || {}),
+        notesFilterMode: normalized,
+        notesFilterWorkspaceId: targetWorkspaceId,
+      },
+    }));
+  }, []);
+
+  const handlePinNote = useCallback((noteId) => {
+    if (!noteId) return;
+    setSettings((prev) => {
+      const entries = Array.isArray(prev.widgets?.notesEntries)
+        ? prev.widgets.notesEntries
+        : [];
+      const nextEntries = entries.map((note) =>
+        note.id === noteId
+          ? {
+            ...note,
+            pinned: !note.pinned,
+          }
+          : note,
+      );
+      return {
+        ...prev,
+        widgets: {
+          ...(prev.widgets || {}),
+          notesEntries: nextEntries,
+        },
+      };
+    });
+    // Update vault if note has vaultId
+    const note = notesEntries.find((n) => n.id === noteId);
+    if (note?.vaultId) {
+      const updatedNote = { ...note, pinned: !note.pinned };
+      saveNoteToVault(
+        note.vaultId,
+        updatedNote,
+        note.folder || "",
+      ).catch(() => {});
+    }
+  }, [notesEntries]);
+
+  const handleAssignWorkspaceToNote = useCallback((noteId, workspaceId) => {
+    if (!noteId) return;
+    const existing =
+      Array.isArray(notesEntries) &&
+      notesEntries.find((n) => n.id === noteId);
+    if (!existing) return;
+    const prevWorkspaceId = existing.workspaceId || null;
+    const prevFolderRaw =
+      typeof existing.folder === "string" ? existing.folder.trim() : "";
+    const prevFolder =
+      prevFolderRaw ||
+      (prevWorkspaceId
+        ? getWorkspaceFolderName(prevWorkspaceId, workspaces)
+        : "");
+    const nextWorkspaceId = workspaceId || null;
+    const nextFolder = nextWorkspaceId
+      ? getWorkspaceFolderName(nextWorkspaceId, workspaces)
+      : prevFolder;
+    setSettings((prev) => {
+      const entries = Array.isArray(prev.widgets?.notesEntries)
+        ? prev.widgets.notesEntries
+        : [];
+      const nextEntries = entries.map((note) =>
+        note.id === noteId
+          ? {
+            ...note,
+            workspaceId: nextWorkspaceId,
+            folder: nextFolder,
+          }
+          : note,
+      );
+      return {
+        ...prev,
+        widgets: {
+          ...(prev.widgets || {}),
+          notesEntries: nextEntries,
+        },
+      };
+    });
+    const vaultId =
+      existing.vaultId || settings?.widgets?.notesVaultActiveId || "default";
+    if (vaultId) {
+      if (prevFolder && prevFolder !== nextFolder) {
+        deleteNoteFromVault(vaultId, existing.id, prevFolder);
+      }
+      const payload = {
+        ...existing,
+        workspaceId: nextWorkspaceId,
+        folder: nextFolder,
+        vaultId,
+      };
+      saveNoteToVault(vaultId, payload);
+    }
+	  }, [notesEntries, workspaces, settings?.widgets?.notesVaultActiveId]);
+	
+  const settingsCurrentBackground = useMemo(() => {
+    if (workspaceBackgroundsEnabled && appearanceWorkspacesEnabled) {
+      const targetWorkspaceId = appearanceEditingTargetId === MASTER_APPEARANCE_ID ? null : appearanceEditingTargetId;
+      if (targetWorkspaceId && workspaceBackgrounds[targetWorkspaceId]?.src) {
+        return workspaceBackgrounds[targetWorkspaceId].src;
+      }
+    } else if (workspaceBackgroundsEnabled && selectedWorkspaceForZoom) {
+      if (workspaceBackgrounds[selectedWorkspaceForZoom]?.src) {
+        return workspaceBackgrounds[selectedWorkspaceForZoom].src;
+      }
+    }
+    return currentBackground;
+  }, [workspaceBackgroundsEnabled, appearanceWorkspacesEnabled, appearanceEditingTargetId, workspaceBackgrounds, selectedWorkspaceForZoom, currentBackground]);
+
+  const settingsCurrentBackgroundMeta = useMemo(() => {
+    if (workspaceBackgroundsEnabled && appearanceWorkspacesEnabled) {
+      const targetWorkspaceId = appearanceEditingTargetId === MASTER_APPEARANCE_ID ? null : appearanceEditingTargetId;
+      if (targetWorkspaceId && workspaceBackgrounds[targetWorkspaceId]?.meta) {
+        return workspaceBackgrounds[targetWorkspaceId].meta;
+      }
+    } else if (workspaceBackgroundsEnabled && selectedWorkspaceForZoom) {
+      if (workspaceBackgrounds[selectedWorkspaceForZoom]?.meta) {
+        return workspaceBackgrounds[selectedWorkspaceForZoom].meta;
+      }
+    }
+    return globalBackgroundMeta;
+  }, [workspaceBackgroundsEnabled, appearanceWorkspacesEnabled, appearanceEditingTargetId, workspaceBackgrounds, selectedWorkspaceForZoom, globalBackgroundMeta]);
 
   const settingsButtonElement = (
     <SettingsButton
       onBackgroundChange={handleBackgroundChange}
-      currentBackground={currentBackground}
-      currentBackgroundMeta={globalBackgroundMeta}
+      currentBackground={settingsCurrentBackground}
+      currentBackgroundMeta={settingsCurrentBackgroundMeta}
       workspaceBackgrounds={workspaceBackgrounds}
       onWorkspaceBackgroundChange={
         workspaceBackgroundsEnabled
           ? handleWorkspaceBackgroundChange
+          : undefined
+      }
+      onDefaultWorkspaceBackgroundChange={
+        workspaceBackgroundsEnabled
+          ? handleDefaultWorkspaceBackgroundChange
           : undefined
       }
       backgroundFollowSlug={backgroundFollowSlug}
@@ -3945,87 +6257,199 @@ function App() {
       }
       backgroundMode={settings.background.mode || "cover"}
       onBackgroundModeChange={handleBackgroundModeChange}
-      backgroundZoom={settings.background.zoom || 1}
-      onBackgroundZoomChange={(zoom) =>
-        setSettings((prev) => ({
-          ...prev,
-          background: { ...prev.background, zoom },
-        }))
-      }
+      backgroundZoom={(() => {
+        if (workspaceBackgroundsEnabled) {
+          const targetWorkspaceId = appearanceWorkspacesEnabled
+            ? (appearanceEditingTargetId === MASTER_APPEARANCE_ID ? null : appearanceEditingTargetId)
+            : selectedWorkspaceForZoom;
+          if (targetWorkspaceId) {
+            const entry = workspaceBackgrounds[targetWorkspaceId];
+            if (entry?.meta?.zoom !== undefined) {
+              return Number(entry.meta.zoom);
+            }
+          }
+        }
+        return settings.background.zoom || 1;
+      })()}
+      selectedWorkspaceForZoom={selectedWorkspaceForZoom}
+      onSelectWorkspaceForZoom={setSelectedWorkspaceForZoom}
+      onBackgroundZoomChange={(zoom, workspaceId) => {
+        if (workspaceBackgroundsEnabled && workspaceId) {
+          // Update zoom in workspace background meta
+          updateWorkspaceBackgroundState((prev) => {
+            const next = { ...prev };
+            if (next[workspaceId]) {
+              next[workspaceId] = {
+                ...next[workspaceId],
+                meta: {
+                  ...next[workspaceId].meta,
+                  zoom: Number(zoom),
+                },
+              };
+            }
+            return next;
+          });
+        } else {
+          // Update global zoom
+          setSettings((prev) => ({
+            ...prev,
+            background: { ...prev.background, zoom },
+          }));
+        }
+      }}
       settings={appearancePanelSettings}
+      globalSpeedDialSettings={settings.speedDial}
       workspaces={workspaces}
-      widgetsSettings={settings.widgets}
+      widgetsSettings={workspaceWidgetsEnabled ? editingWidgetsProfile : (settings.widgets || {})}
       appearanceWorkspaceOptions={appearanceWorkspaceOptions}
       appearanceWorkspaceActiveId={appearanceEditingTargetId}
       appearanceWorkspacesEnabled={appearanceWorkspacesEnabled}
+      activeWorkspaceId={activeWorkspaceId}
       isMasterAppearanceView={
         appearanceEditingTargetId === MASTER_APPEARANCE_ID ||
         !appearanceWorkspacesEnabled
       }
       onToggleAppearanceWorkspaces={handleToggleAppearanceWorkspaces}
       onSelectAppearanceWorkspace={handleSelectAppearanceWorkspace}
+      workspaceThemingEnabled={workspaceThemingEnabled}
+      onToggleWorkspaceTheming={handleToggleWorkspaceTheming}
+      workspaceThemingSelectedId={workspaceThemingSelectedId}
+      onSelectWorkspaceTheming={handleSelectWorkspaceTheming}
+      workspaceWidgetsEnabled={workspaceWidgetsEnabled}
+      onToggleWorkspaceWidgets={handleToggleWorkspaceWidgets}
+      workspaceWidgetsSelectedId={workspaceWidgetsSelectedId}
+      onSelectWorkspaceWidgets={handleSelectWorkspaceWidgets}
       onSettingsVisibilityChange={handleSettingsVisibilityChange}
-      onSelectMasterLayout={(mode) =>
-        applyAppearanceEdit((appearanceProfile) => {
-          const nextLayout = mode === "classic" ? "classic" : "modern";
-          try {
-            localStorage.setItem("lastManualMasterLayout", nextLayout);
-          } catch { }
-          return {
-            ...(appearanceProfile || {}),
-            masterLayout: nextLayout,
-          };
-        })
-      }
-      onToggleShowSeconds={(val) =>
+      onSelectMasterLayout={(mode) => {
+        const nextLayout = mode === "classic" ? "classic" : "modern";
+        try {
+          localStorage.setItem("lastManualMasterLayout", nextLayout);
+        } catch { }
+        applyAppearanceEdit((appearanceProfile) => ({
+          ...(appearanceProfile || {}),
+          masterLayout: nextLayout,
+        }));
+      }}
+      onToggleShowSeconds={(val) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            showSeconds: !!val,
+          }));
+          return;
+        }
         setSettings((prev) => ({
           ...prev,
-          widgets: { ...prev.widgets, showSeconds: !!val },
-        }))
-      }
-      onToggleTwentyFourHour={(val) =>
+          widgets: { ...(prev.widgets || {}), showSeconds: !!val },
+        }));
+      }}
+      onToggleTwentyFourHour={(val) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            twentyFourHour: !!val,
+          }));
+          return;
+        }
         setSettings((prev) => ({
           ...prev,
-          widgets: { ...prev.widgets, twentyFourHour: !!val },
-        }))
-      }
-      onToggleUnits={(isF) =>
+          widgets: { ...(prev.widgets || {}), twentyFourHour: !!val },
+        }));
+      }}
+      onToggleUnits={(isF) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            units: isF ? "imperial" : "metric",
+          }));
+          return;
+        }
         setSettings((prev) => ({
           ...prev,
-          widgets: { ...prev.widgets, units: isF ? "imperial" : "metric" },
-        }))
-      }
-      onSelectClockPreset={(preset) =>
+          widgets: { ...(prev.widgets || {}), units: isF ? "imperial" : "metric" },
+        }));
+      }}
+      onSelectClockPreset={(preset) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            clockPreset: preset,
+            layoutPreset: undefined,
+          }));
+          return;
+        }
         setSettings((prev) => ({
           ...prev,
           widgets: {
-            ...prev.widgets,
+            ...(prev.widgets || {}),
             clockPreset: preset,
             layoutPreset: undefined,
           },
-        }))
-      }
-      onSelectWeatherPreset={(preset) =>
+        }));
+      }}
+      onSelectWeatherPreset={(preset) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            weatherPreset: preset,
+            layoutPreset: undefined,
+          }));
+          return;
+        }
         setSettings((prev) => ({
           ...prev,
           widgets: {
-            ...prev.widgets,
+            ...(prev.widgets || {}),
             weatherPreset: preset,
             layoutPreset: undefined,
           },
-        }))
-      }
-      onChangeSubTimezones={(list) =>
+        }));
+      }}
+      onToggleWeatherHoverDetails={(val) => {
+        const newValue = !!val;
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            weatherShowDetailsOnHover: newValue,
+          }));
+          // Also update base settings to ensure persistence
+          setSettings((prev) => ({
+            ...prev,
+            widgets: {
+              ...(prev.widgets || {}),
+              weatherShowDetailsOnHover: newValue,
+            },
+          }));
+          return;
+        }
         setSettings((prev) => ({
           ...prev,
           widgets: {
-            ...prev.widgets,
+            ...(prev.widgets || {}),
+            weatherShowDetailsOnHover: newValue,
+          },
+        }));
+      }}
+      onChangeSubTimezones={(list) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
             subTimezones: Array.isArray(list)
               ? list
-              : prev.widgets.subTimezones,
+              : (widgetsProfile?.subTimezones || []),
+          }));
+          return;
+        }
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            subTimezones: Array.isArray(list)
+              ? list
+              : (prev.widgets?.subTimezones || []),
           },
-        }))
-      }
+        }));
+      }}
       onSelectWidgetsFontPreset={(id) =>
         setSettings((prev) => ({
           ...prev,
@@ -4104,6 +6528,179 @@ function App() {
           widgets: { ...prev.widgets, clockWeatherSeparator: !!v },
         }))
       }
+      onToggleEnableNotes={(val) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            enableNotes: !!val,
+          }));
+          return;
+        }
+        setSettings((prev) => ({
+          ...prev,
+          widgets: { ...(prev.widgets || {}), enableNotes: !!val },
+        }));
+      }}
+      onToggleEnableClock={(val) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            enableClock: !!val,
+          }));
+          return;
+        }
+        setSettings((prev) => ({
+          ...prev,
+          widgets: { ...(prev.widgets || {}), enableClock: !!val },
+        }));
+      }}
+      onToggleEnableWeather={(val) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            enableWeather: !!val,
+          }));
+          return;
+        }
+        setSettings((prev) => ({
+          ...prev,
+          widgets: { ...(prev.widgets || {}), enableWeather: !!val },
+        }));
+      }}
+      emailAccounts={emailAccounts}
+      onAddEmailAccount={handleAddEmailAccount}
+      onRemoveEmailAccount={handleRemoveEmailAccount}
+      onUpdateEmailAccountWorkspace={handleUpdateEmailAccountWorkspace}
+      onSelectNotesMode={(mode) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesMode:
+              mode === "center" || mode === "widget" ? mode : "auto",
+          },
+        }))
+      }
+
+      onToggleNotesLinkSpeedDialBlur={(val) =>
+        setSettings((prev) => {
+          const nextWidgets = {
+            ...(prev.widgets || {}),
+            notesLinkSpeedDialBlur: !!val,
+          };
+          if (val) {
+            nextWidgets.notesBlurEnabled = true;
+          }
+          return { ...prev, widgets: nextWidgets };
+        })
+      }
+      onToggleNotesBlurEnabled={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesBlurEnabled: !!val,
+          },
+        }))
+      }
+      onChangeNotesBlurPx={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesBlurPx: Number.isFinite(Number(val))
+              ? Math.max(0, Math.min(40, Number(val)))
+              : prev.widgets?.notesBlurPx ?? 18,
+          },
+        }))
+      }
+      onToggleNotesRemoveBackground={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesRemoveBackground: !!val,
+          },
+        }))
+      }
+      onToggleNotesRemoveOutline={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesRemoveOutline: !!val,
+          },
+        }))
+      }
+      onChangeSearchBarPushDirection={(direction) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            searchBarPushDirection: direction === 'up' ? 'up' : 'down',
+          },
+        }))
+      }
+      onToggleNotesSimpleButtons={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesSimpleButtons: !!val,
+          },
+        }))
+      }
+      onToggleNotesGlowShadow={(enabled) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: { ...(prev.widgets || {}), notesGlowShadow: !!enabled },
+        }))
+      }
+      onToggleNotesAutoExpandOnHover={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesAutoExpandOnHover: !!val,
+          },
+        }))
+      }
+      onToggleNotesEnhancedWorkspaceId={(enabled) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesEnhancedWorkspaceId: !!enabled,
+          },
+        }))
+      }
+      onToggleNotesDynamicBackground={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesDynamicBackground: !!val,
+          },
+        }))
+      }
+      onToggleNotesHoverPreview={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesHoverPreview: !!val,
+          },
+        }))
+      }
+      onToggleNotesDynamicSizing={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            notesDynamicSizing: !!val,
+          },
+        }))
+      }
       onToggleOpenInNewTab={(val) =>
         setSettings((prev) => ({
           ...prev,
@@ -4114,6 +6711,12 @@ function App() {
         applyAppearanceEdit((appearanceProfile) => ({
           ...(appearanceProfile || {}),
           animatedOverlay: !!val,
+        }))
+      }
+      onChangeAnimatedOverlaySpeed={(val) =>
+        applyAppearanceEdit((appearanceProfile) => ({
+          ...(appearanceProfile || {}),
+          animatedOverlaySpeed: Math.max(0.5, Math.min(10, Number(val) || 2)),
         }))
       }
       onToggleMirrorLayout={(val) =>
@@ -4231,6 +6834,26 @@ function App() {
             matchSpeedDialMaxGlow: !!val,
           },
         }))
+      }
+      onToggleSearchBarLinkSpeedDialBlur={(val) =>
+        setSettings((prev) => {
+          const state = normalizeAppearanceWorkspaceState(prev.appearanceWorkspaces);
+          if (state?.enabled && applyAppearanceEditRef.current) {
+            // Use applyAppearanceEdit to update workspace-specific appearance
+            applyAppearanceEditRef.current((appearanceProfile) => ({
+              ...(appearanceProfile || {}),
+              searchBarLinkSpeedDialBlur: !!val,
+            }));
+            return prev;
+          }
+          return {
+            ...prev,
+            appearance: {
+              ...(prev.appearance || {}),
+              searchBarLinkSpeedDialBlur: !!val,
+            },
+          };
+        })
       }
       onToggleSearchBarGlowByUrl={(val) =>
         applyAppearanceEdit((appearanceProfile) => ({
@@ -4458,10 +7081,24 @@ function App() {
         }))
       }
       onChangeSpeedDialBlur={(v) =>
-        setSettings((prev) => ({
-          ...prev,
-          speedDial: { ...prev.speedDial, blurPx: v },
-        }))
+        setSettings((prev) => {
+          const newBlur = Number(v);
+          // When master override is changed, update all workspace blur overrides to match
+          const existingOverrides = prev.speedDial?.workspaceBlurOverrides || {};
+          const updatedOverrides = {};
+          // Update all existing workspace overrides to the new master value
+          for (const workspaceId in existingOverrides) {
+            updatedOverrides[workspaceId] = newBlur;
+          }
+          return {
+            ...prev,
+            speedDial: {
+              ...prev.speedDial,
+              blurPx: newBlur,
+              workspaceBlurOverrides: updatedOverrides,
+            },
+          };
+        })
       }
       onChangeSpeedDialMaxGlow={(val) =>
         setSettings((prev) => {
@@ -4469,11 +7106,13 @@ function App() {
             prev.appearanceWorkspaces,
           );
           const anchorId = prev.speedDial?.anchoredWorkspaceId || null;
-          const targetId = resolveAppearanceWorkspaceTargetId(
+          // Use state.lastSelectedId instead of closure value to ensure we have current state
+          const currentEditingTargetId = resolveAppearanceWorkspaceTargetId(
             state,
-            appearanceEditingTargetId,
+            state.lastSelectedId || DEFAULT_APPEARANCE_WORKSPACE_ID,
             anchorId,
-          );
+          ) || DEFAULT_APPEARANCE_WORKSPACE_ID;
+          const targetId = currentEditingTargetId;
           const numVal = Number(val);
           const next = {
             ...prev,
@@ -4485,13 +7124,14 @@ function App() {
             },
           };
           if (
-            appearanceWorkspacesEnabled &&
-            targetId !== DEFAULT_APPEARANCE_WORKSPACE_ID
+            state.enabled &&
+            targetId !== DEFAULT_APPEARANCE_WORKSPACE_ID &&
+            targetId !== MASTER_APPEARANCE_ID
           ) {
             next.speedDial.maxGlowByWorkspace[targetId] = numVal;
           } else {
             next.speedDial.maxGlow = numVal;
-            if (next.speedDial.maxGlowByWorkspace) {
+            if (next.speedDial.maxGlowByWorkspace && targetId !== DEFAULT_APPEARANCE_WORKSPACE_ID) {
               delete next.speedDial.maxGlowByWorkspace[targetId];
             }
           }
@@ -4564,11 +7204,13 @@ function App() {
             prev.appearanceWorkspaces,
           );
           const anchorId = prev.speedDial?.anchoredWorkspaceId || null;
-          const targetId = resolveAppearanceWorkspaceTargetId(
+          // Use state.lastSelectedId instead of closure value to ensure we have current state
+          const currentEditingTargetId = resolveAppearanceWorkspaceTargetId(
             state,
-            appearanceEditingTargetId,
+            state.lastSelectedId || DEFAULT_APPEARANCE_WORKSPACE_ID,
             anchorId,
-          );
+          ) || DEFAULT_APPEARANCE_WORKSPACE_ID;
+          const targetId = currentEditingTargetId;
           const next = { ...prev };
           next.speedDial = {
             ...(prev.speedDial || {}),
@@ -4576,7 +7218,7 @@ function App() {
               ...(prev.speedDial?.matchHeaderColorByWorkspace || {}),
             },
           };
-          if (appearanceWorkspacesEnabled && targetId !== DEFAULT_APPEARANCE_WORKSPACE_ID) {
+          if (state.enabled && targetId !== DEFAULT_APPEARANCE_WORKSPACE_ID && targetId !== MASTER_APPEARANCE_ID) {
             next.speedDial.matchHeaderColorByWorkspace[targetId] = !!val;
           } else {
             next.speedDial.matchHeaderColor = !!val;
@@ -4590,11 +7232,13 @@ function App() {
             prev.appearanceWorkspaces,
           );
           const anchorId = prev.speedDial?.anchoredWorkspaceId || null;
-          const targetId = resolveAppearanceWorkspaceTargetId(
+          // Use state.lastSelectedId instead of closure value to ensure we have current state
+          const currentEditingTargetId = resolveAppearanceWorkspaceTargetId(
             state,
-            appearanceEditingTargetId,
+            state.lastSelectedId || DEFAULT_APPEARANCE_WORKSPACE_ID,
             anchorId,
-          );
+          ) || DEFAULT_APPEARANCE_WORKSPACE_ID;
+          const targetId = currentEditingTargetId;
           const next = { ...prev };
           next.speedDial = {
             ...(prev.speedDial || {}),
@@ -4602,7 +7246,7 @@ function App() {
               ...(prev.speedDial?.matchHeaderFontByWorkspace || {}),
             },
           };
-          if (appearanceWorkspacesEnabled && targetId !== DEFAULT_APPEARANCE_WORKSPACE_ID) {
+          if (state.enabled && targetId !== DEFAULT_APPEARANCE_WORKSPACE_ID && targetId !== MASTER_APPEARANCE_ID) {
             next.speedDial.matchHeaderFontByWorkspace[targetId] = !!val;
           } else {
             next.speedDial.matchHeaderFont = !!val;
@@ -4728,6 +7372,15 @@ function App() {
           },
         }))
       }
+      onToggleMusicLinkSpeedDialBlur={(val) =>
+        applyAppearanceEdit((appearanceProfile) => ({
+          ...(appearanceProfile || {}),
+          music: {
+            ...(appearanceProfile?.music || {}),
+            linkSpeedDialBlur: !!val,
+          },
+        }))
+      }
       onToggleMusicDisableButtonBackgrounds={(val) =>
         applyAppearanceEdit((appearanceProfile) => ({
           ...(appearanceProfile || {}),
@@ -4737,12 +7390,28 @@ function App() {
           },
         }))
       }
-      onToggleEnableMusicPlayer={(val) =>
+      onToggleMusicGlowShadow={(val) =>
+        applyAppearanceEdit((appearanceProfile) => ({
+          ...(appearanceProfile || {}),
+          music: {
+            ...(appearanceProfile?.music || {}),
+            glowShadow: !!val,
+          },
+        }))
+      }
+      onToggleEnableMusicPlayer={(val) => {
+        if (workspaceWidgetsEnabled && applyWidgetsEditRef.current) {
+          applyWidgetsEditRef.current((widgetsProfile) => ({
+            ...(widgetsProfile || {}),
+            enableMusicPlayer: !!val,
+          }));
+          return;
+        }
         setSettings((prev) => ({
           ...prev,
           widgets: { ...(prev.widgets || {}), enableMusicPlayer: !!val },
-        }))
-      }
+        }));
+      }}
       onChangeWorkspaceGlowColor={(id, val) =>
         setSettings((prev) => ({
           ...prev,
@@ -4801,6 +7470,12 @@ function App() {
         setSettings((prev) => ({
           ...prev,
           iconTheming: { ...(prev.iconTheming || {}), linkWorkspaceGrayscale: !!val },
+        }))
+      }
+      onToggleIconThemingFollowSlug={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          iconTheming: { ...(prev.iconTheming || {}), followSlug: !!val },
         }))
       }
       onChangeWorkspaceIconThemeMode={(wsId, mode) =>
@@ -4878,11 +7553,13 @@ function App() {
             prev.appearanceWorkspaces,
           );
           const anchorId = prev.speedDial?.anchoredWorkspaceId || null;
-          const targetId = resolveAppearanceWorkspaceTargetId(
+          // Use state.lastSelectedId instead of closure value to ensure we have current state
+          const currentEditingTargetId = resolveAppearanceWorkspaceTargetId(
             state,
-            appearanceEditingTargetId,
+            state.lastSelectedId || DEFAULT_APPEARANCE_WORKSPACE_ID,
             anchorId,
-          );
+          ) || DEFAULT_APPEARANCE_WORKSPACE_ID;
+          const targetId = currentEditingTargetId;
           const next = { ...prev };
           next.speedDial = {
             ...(prev.speedDial || {}),
@@ -4890,7 +7567,7 @@ function App() {
               ...(prev.speedDial?.glowTransientByWorkspace || {}),
             },
           };
-          if (appearanceWorkspacesEnabled && targetId !== MASTER_APPEARANCE_ID) {
+          if (state.enabled && targetId !== DEFAULT_APPEARANCE_WORKSPACE_ID && targetId !== MASTER_APPEARANCE_ID) {
             next.speedDial.glowTransientByWorkspace[targetId] = !!checked;
           } else {
             next.speedDial.glowTransient = !!checked;
@@ -5150,6 +7827,18 @@ function App() {
           },
         }))
       }
+      onChangeWorkspaceBlurOverride={(id, val) =>
+        setSettings((prev) => ({
+          ...prev,
+          speedDial: {
+            ...prev.speedDial,
+            workspaceBlurOverrides: {
+              ...(prev.speedDial.workspaceBlurOverrides || {}),
+              [id]: Number(val),
+            },
+          },
+        }))
+      }
       onToggleWorkspaceTextByUrl={(checked) =>
         setSettings((prev) => ({
           ...prev,
@@ -5369,13 +8058,19 @@ function App() {
     return null; // Prevent hydration mismatch
   }
 
+  const iconThemingWorkspaceId =
+    settings.iconTheming?.followSlug === false
+      ? activeWorkspaceId
+      : (hardWorkspaceId || activeWorkspaceId);
+
   return (
     <>
       {/* Wire SettingsButton events to settings updates */}
       <IconThemeFilters
         settings={settings}
-        activeWorkspaceId={activeWorkspaceId}
+        activeWorkspaceId={iconThemingWorkspaceId}
         anchoredWorkspaceId={settings?.speedDial?.anchoredWorkspaceId}
+        workspaceThemingEnabled={workspaceThemingEnabled}
       />
       <script
         dangerouslySetInnerHTML={{
@@ -5416,7 +8111,15 @@ function App() {
             placeholderSrc={activeBackgroundPlaceholder}
             deferLoad={shouldDeferActiveBackground}
             mode={settings.background.mode || "cover"}
-            zoom={settings.background.zoom || 1}
+            zoom={(() => {
+              if (workspaceBackgroundsEnabled && backgroundWorkspaceId) {
+                const entry = workspaceBackgrounds[backgroundWorkspaceId];
+                if (entry?.meta?.zoom !== undefined) {
+                  return Number(entry.meta.zoom);
+                }
+              }
+              return settings.background.zoom || 1;
+            })()}
             isVideo={activeBackgroundMeta?.mime?.startsWith('video/')}
           />
           {/* Optional animated overlay (scan lines). Other universal overlays removed for clarity */}
@@ -5426,7 +8129,7 @@ function App() {
               style={{
                 backgroundImage:
                   "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 255, 255, 0.3) 2px, rgba(0, 255, 255, 0.3) 4px)",
-                animation: "scan 2s linear infinite",
+                animation: `scan ${activeAppearance?.animatedOverlaySpeed ?? 2}s linear infinite`,
               }}
             />
           )}
@@ -5440,7 +8143,7 @@ function App() {
             {/* Left column - Clock and Weather */}
             <div
               id="app-left-column"
-              className="h-full flex flex-col p-4 space-y-4 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar shrink"
+              className="h-full flex flex-col p-4 gap-4 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar shrink"
               style={{
                 width: "var(--widgets-column-width)",
                 minWidth: "clamp(12rem, 18vw, 16rem)",
@@ -5448,10 +8151,12 @@ function App() {
                 flexBasis: "var(--widgets-column-width)",
               }}
             >
-              <div className={clockPreset === "preset2" ? "mt-6" : ""}>
-                <ClockWidget settings={resolvedClockSettings} />
-              </div>
-              {showClockWeatherSeparator && (
+              {showClockWidget && (
+                <div className={clockPreset === "preset2" ? "mt-6" : ""}>
+                  <ClockWidget settings={resolvedClockSettings} />
+                </div>
+              )}
+              {showClockWeatherSeparator && showClockWidget && showWeatherWidget && (
                 <div className="mt-3 mb-2 mx-1" aria-hidden="true">
                   <div
                     className="h-px w-full rounded-full"
@@ -5462,26 +8167,108 @@ function App() {
                   />
                 </div>
               )}
-              <div className={weatherMarginClass} style={weatherMarginStyle}>
-                <WeatherWidget settings={resolvedWeatherSettings} />
-              </div>
-              {/* Music controller sits near the bottom, slightly raised */}
-              {settings?.widgets?.enableMusicPlayer !== false && (
-                <div className="mt-auto mb-12">
-                  <MusicController
-                    backendBase={
-                      settings?.general?.musicBackend || "/music/api/v1"
-                    }
-                    token={settings?.general?.musicToken || ""}
-                    styleConfig={resolvedMusicStyleConfig}
-                  />
+              {showWeatherWidget && (
+                <div className={weatherMarginClass} style={weatherMarginStyle}>
+                  <WeatherWidget settings={resolvedWeatherSettings} />
+                </div>
+              )}
+              {(showNotesWidget || showEmailWidget || showMusicPlayer) && (
+                <div className="flex-1 min-h-0 flex flex-col gap-4 mt-3">
+                  {showNotesWidget && (
+                    <NotesWidget
+                      settings={resolvedNotesSettings}
+                      entries={filteredNotesEntries}
+                      activeId={activeNoteId}
+                      activeNoteTitle={editingNote?.title || ""}
+                      inlineEditing={notesInlineEditing}
+                      draftValue={notesDraft}
+                      onDraftChange={setNotesDraft}
+                      onTitleChange={handleNoteTitleChange}
+                      onCreateInline={() => handleNoteCreate("widget")}
+                      onCreateCenter={() => handleNoteCreate("center")}
+                      onSelectNote={(id, loc) => handleNoteSelect(id, loc)}
+                      onInlineBack={handleInlineBack}
+                      onPromoteToCenter={handlePromoteActiveNoteToCenter}
+                      activeLocation={activeNoteLocation}
+                      listStyle="pill"
+                      filterMode={notesFilterMode}
+                      filterWorkspaceId={notesFilterWorkspaceId}
+                      onChangeFilter={handleNotesFilterChange}
+                      workspaces={workspaces}
+                      workspaceMeta={workspaceMetaMap}
+                      currentWorkspaceId={resolvedWorkspaceForFilter}
+                      activeNoteWorkspaceId={editingNote?.workspaceId || null}
+                      onAssignWorkspace={handleAssignWorkspaceToNote}
+                      onHoverNote={handleNoteHoverPreview}
+                      onDeleteNote={handleDeleteNoteById}
+                      onPinNote={handlePinNote}
+                      linkSpeedDialBlur={!!settings?.widgets?.notesLinkSpeedDialBlur}
+                      linkedBlurPx={currentSpeedDialBlurPx}
+                      autoExpandOnHover={!!settings?.widgets?.notesAutoExpandOnHover}
+                      enhancedWorkspaceId={settings.widgets.notesEnhancedWorkspaceId}
+                      hoverPreviewEnabled={!!settings?.widgets?.notesHoverPreview}
+                      emailAccounts={emailAccounts}
+                      onRefreshNotes={() => refreshNotesFromVault(true)}
+                      onComposeEmail={() => {
+                        // TODO: Implement compose email functionality
+                        console.log('Compose email')
+                      }}
+                      onRefreshEmails={() => {
+                        // TODO: Implement refresh emails functionality
+                        console.log('Refresh emails')
+                      }}
+                      onPromoteEmailToCenter={handlePromoteEmailToCenter}
+                      emailsCenterOpen={emailsCenterOpen}
+                      onEmailClick={handleEmailClick}
+                      onWidgetAlternatorToggle={handleWidgetAlternatorToggle}
+                      widgetAlternatorMode={widgetAlternatorMode}
+                      emailWidgetShownIndependently={showEmailWidget && widgetAlternatorMode === 'none'}
+                      className="flex-1 min-h-[240px]"
+                    />
+                  )}
+                  {showEmailWidget && (
+                    <EmailWidget
+                      settings={resolvedNotesSettings}
+                      emailAccounts={emailAccounts}
+                      onComposeEmail={() => {
+                        // TODO: Implement compose email functionality
+                        console.log('Compose email')
+                      }}
+                      onRefreshEmails={() => {
+                        // TODO: Implement refresh emails functionality
+                        console.log('Refresh emails')
+                      }}
+                      onPromoteEmailToCenter={handlePromoteEmailToCenter}
+                      emailsCenterOpen={emailsCenterOpen}
+                      onEmailClick={handleEmailClick}
+                      filterMode={emailCenterFilterMode}
+                      filterWorkspaceId={emailCenterFilterWorkspaceId}
+                      onChangeFilter={handleEmailCenterFilterChange}
+                      workspaces={workspaces}
+                      currentWorkspaceId={resolvedWorkspaceForFilter}
+                      onWidgetAlternatorToggle={handleWidgetAlternatorToggle}
+                      widgetAlternatorMode={widgetAlternatorMode}
+                      className="flex-1 min-h-[240px]"
+                    />
+                  )}
+                  {showMusicPlayer && (
+                    <div className="mt-auto mb-12 shrink-0 relative z-10">
+                      <MusicController
+                        backendBase={
+                          settings?.general?.musicBackend || "/music/api/v1"
+                        }
+                        token={settings?.general?.musicToken || ""}
+                        styleConfig={resolvedMusicStyleConfig}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             {/* Center column - Main content area */}
             <div
-              className={`flex-1 flex flex-col justify-start items-center p-6 ${isClassicLayout ? "pt-12" : "pt-32"} main-center relative`}
+              className={`flex-1 flex flex-col justify-start items-center p-6 ${isClassicLayout ? "pt-20" : "pt-48"} main-center relative`}
             >
               {isClassicLayout && (
                 <div
@@ -5548,6 +8335,100 @@ function App() {
                 <div id="pinned-search-container" className="w-full"></div>
                 {/* Search results will be displayed here */}
                 <div id="search-results" className="w-full"></div>
+                {showEmailWidget && emailsCenterOpen && (
+                  <div className="w-full flex justify-center px-2 notes-overlay-slot" style={{ paddingTop: '3rem', paddingBottom: '4rem', maxHeight: 'calc(100vh - 8rem)' }}>
+                    <div
+                      className="w-full"
+                      style={{
+                        maxWidth:
+                          "calc(min(clamp(720px, 72vw, 1000px), var(--center-column-width, 1000px)) + 8px)",
+                        marginRight: "-8px",
+                      }}
+                    >
+                      <EmailOverlay
+                        settings={resolvedNotesSettings}
+                        onClose={() => {
+                          handleEmailCenterClose()
+                          setEmailCenterEmailId(null)
+                          setEmailCenterEmailAccount(null)
+                        }}
+                        emailAccounts={emailAccounts}
+                        selectedEmailId={emailCenterEmailId}
+                        selectedEmailAccount={emailCenterEmailAccount}
+                        workspaces={workspaces}
+                        currentWorkspaceId={resolvedWorkspaceForFilter}
+                        currentWorkspace={workspaces.find(w => w.id === resolvedWorkspaceForFilter) || null}
+                        filterMode={emailCenterFilterMode}
+                        filterWorkspaceId={emailCenterFilterWorkspaceId}
+                        onChangeFilter={handleEmailCenterFilterChange}
+                        onComposeEmail={() => {
+                          console.log('Compose email')
+                        }}
+                        onRefreshEmails={() => {
+                          console.log('Refresh emails')
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {showNotesWidget && notesCenterNoteId && editingNote && (
+                  <div className="w-full flex justify-center px-2 notes-overlay-slot">
+                    <div
+                      className="w-full"
+                      style={{
+                        maxWidth:
+                          "calc(min(clamp(720px, 72vw, 1000px), var(--center-column-width, 1000px)) + 8px)",
+                        marginRight: "-8px",
+                      }}
+	                    >
+	                      <NotesOverlay
+	                        settings={resolvedNotesSettings}
+	                        note={editingNote}
+	                        draftValue={notesDraft}
+	                        onDraftChange={setNotesDraft}
+	                        onTitleChange={handleNoteTitleChange}
+                        onClose={handleCenterClose}
+                        onPopInline={() => {
+                          setNotesCenterNoteId(null);
+                          setNotesInlineEditing(true);
+                        }}
+                        workspaces={workspaces}
+                        workspaceMeta={workspaceMetaMap}
+                        noteWorkspaceId={editingNote?.workspaceId || null}
+                        onAssignWorkspace={handleAssignWorkspaceToNote}
+                        emailAccounts={emailAccounts}
+                      />
+                    </div>
+                  </div>
+                )}
+                {showNotesWidget &&
+                  !notesCenterNoteId &&
+                  hoverPreviewNote &&
+                  settings?.widgets?.notesHoverPreview && (
+                    <div className="w-full flex justify-center px-2 notes-overlay-slot pointer-events-none">
+                      <div
+                        className="w-full"
+                        style={{
+                          maxWidth:
+                            "calc(min(clamp(720px, 72vw, 1000px), var(--center-column-width, 1000px)) + 8px)",
+                          marginRight: "-8px",
+                        }}
+                      >
+	                        <NotesOverlay
+	                          settings={resolvedNotesSettings}
+	                          note={hoverPreviewNote}
+	                          draftValue={hoverPreviewNote?.content || ""}
+	                          onDraftChange={() => { }}
+                          onClose={() => { }}
+                          previewMode
+                          workspaces={workspaces}
+                          workspaceMeta={workspaceMetaMap}
+                          noteWorkspaceId={hoverPreviewNote?.workspaceId || null}
+                          onAssignWorkspace={() => { }}
+                        />
+                      </div>
+                    </div>
+                  )}
               </div>
               {/* Search results will be displayed here */}
               {isClassicLayout && (
@@ -5626,16 +8507,21 @@ function App() {
               ...layoutCssVars,
             }}
           >
-            <SearchBox
-              ref={searchBoxRef}
-              settings={runtimeSettings}
-              workspaces={workspaces}
-              activeWorkspaceId={activeWorkspaceId}
-              urlWorkspaceId={hardWorkspaceId}
-              layoutMode={masterLayoutMode}
-              searchBarBlurPx={searchBarBlurPx}
-              suggestionsBlurPx={effectiveSuggestionsBlurPx}
-            />
+            {!((showEmailWidget && emailsCenterOpen) || (showNotesWidget && notesCenterNoteId)) && (
+              <SearchBox
+                ref={searchBoxRef}
+                settings={runtimeSettings}
+                workspaces={workspaces}
+                activeWorkspaceId={activeWorkspaceId}
+                urlWorkspaceId={hardWorkspaceId}
+                layoutMode={masterLayoutMode}
+                searchBarBlurPx={searchBarBlurPx}
+                suggestionsBlurPx={effectiveSuggestionsBlurPx}
+                centerContentOpen={!!((showNotesWidget && notesCenterNoteId) || (showEmailWidget && emailsCenterOpen))}
+                workspaceThemingEnabled={workspaceThemingEnabled}
+                resolvedGlowColor={resolvedGlowColorForShadows}
+              />
+            )}
           </div>
         </div>
       </ErrorBoundary>

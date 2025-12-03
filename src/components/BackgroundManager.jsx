@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, Image, X, Check, RotateCcw, Trash2 } from 'lucide-react'
-import { createPortal } from 'react-dom'
 import * as bgDB from '../lib/idb-backgrounds'
+import * as bgServer from '../lib/background-storage'
 import themeGif2 from '@/assets/theme_2.gif'
 import themeGif3 from '@/assets/theme_3.gif'
 import backgroundDefault from '@/assets/background.webp'
@@ -72,7 +72,8 @@ const BackgroundManager = ({
   anchoredWorkspaceId = null,
   onAssignWorkspace,
   onAssignDefault,
-  workspaceAssignmentsEnabled = true
+  workspaceAssignmentsEnabled = true,
+  selectedWorkspaceForAssignment = null
 }) => {
   const isControlled = typeof open === 'boolean'
   const [internalOpen, setInternalOpen] = useState(false)
@@ -80,8 +81,6 @@ const BackgroundManager = ({
   const uploadedBackgroundsRef = useRef([])
   const [isUploading, setIsUploading] = useState(false)
   const [selectedKey, setSelectedKey] = useState(() => deriveSelectionKey(currentMeta, currentBackground))
-  const [contextMenu, setContextMenu] = useState(null)
-  const contextMenuRef = useRef(null)
   const fileInputRef = useRef(null)
   const assignDefault = onAssignDefault || onBackgroundChange
 
@@ -109,40 +108,6 @@ const BackgroundManager = ({
     setSelectedKey(deriveSelectionKey(currentMeta, currentBackground))
   }, [currentMeta, currentBackground])
 
-  useEffect(() => {
-    if (!contextMenu) return
-    if (typeof window === 'undefined') return undefined
-
-    const handleMouseLike = (event) => {
-      if (contextMenuRef.current && contextMenuRef.current.contains(event.target)) return
-      setContextMenu(null)
-    }
-
-    const handleKey = (event) => {
-      if (event.key === 'Escape') setContextMenu(null)
-    }
-
-    const handleBlur = () => setContextMenu(null)
-
-    window.addEventListener('mousedown', handleMouseLike)
-    window.addEventListener('wheel', handleMouseLike, true)
-    window.addEventListener('resize', handleMouseLike)
-    window.addEventListener('blur', handleBlur)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      window.removeEventListener('mousedown', handleMouseLike)
-      window.removeEventListener('wheel', handleMouseLike, true)
-      window.removeEventListener('resize', handleMouseLike)
-      window.removeEventListener('blur', handleBlur)
-      window.removeEventListener('keydown', handleKey)
-    }
-  }, [contextMenu])
-
-  useEffect(() => {
-    if (!workspaceAssignmentsEnabled) {
-      setContextMenu(null)
-    }
-  }, [workspaceAssignmentsEnabled])
 
 
   const loadBackgrounds = useCallback(async () => {
@@ -174,23 +139,61 @@ const BackgroundManager = ({
         try { URL.revokeObjectURL(bg.url) } catch { }
       })
 
-      const list = await bgDB.listBackgrounds()
+      // Try to load from server first, fallback to IndexedDB
+      let list = []
+      try {
+        const serverList = await bgServer.tryListBackgroundsFromServer()
+        if (serverList && serverList.length > 0) {
+          // Convert server format to our format
+          list = serverList.map(bg => ({
+            id: bg.id,
+            name: bg.name,
+            type: bg.mime,
+            size: bg.size,
+            createdAt: bg.createdAt || Date.now(),
+            url: bg.url,
+            fromServer: true
+          }))
+        }
+      } catch (e) {
+        console.warn('Server unavailable, using IndexedDB:', e)
+      }
+
+      // If no server backgrounds, load from IndexedDB
+      if (list.length === 0) {
+        list = await bgDB.listBackgrounds()
+      } else {
+        // Merge with IndexedDB backgrounds (server takes precedence)
+        const idbList = await bgDB.listBackgrounds()
+        const serverIds = new Set(list.map(bg => bg.id))
+        const idbOnly = idbList.filter(bg => !serverIds.has(bg.id))
+        list = [...list, ...idbOnly]
+      }
+
       uploadedBackgroundsRef.current = list
       setUploadedBackgrounds(list)
     } catch (e) {
-      console.error('Failed to load backgrounds from IndexedDB', e)
+      console.error('Failed to load backgrounds', e)
     }
   }, [])
 
   const applyBackground = useCallback((backgroundUrl, meta) => {
-    setContextMenu(null)
     const normalizedMeta = meta || { type: 'inline', url: backgroundUrl }
     setSelectedKey(deriveSelectionKey(normalizedMeta, backgroundUrl))
-    onBackgroundChange?.(backgroundUrl, normalizedMeta)
+    
+    // If workspace backgrounds enabled, use workspace assignment (null means Master Override)
+    // Otherwise use default behavior
+    if (workspaceAssignmentsEnabled && onAssignWorkspace) {
+      // selectedWorkspaceForAssignment can be null (Master Override) or a workspace ID
+      onAssignWorkspace(selectedWorkspaceForAssignment, backgroundUrl, normalizedMeta)
+    } else {
+      onBackgroundChange?.(backgroundUrl, normalizedMeta)
+    }
+    
     if (closeOnSelect && !embedded) {
       setOpen(false)
     }
-  }, [closeOnSelect, embedded, onBackgroundChange, setOpen])
+  }, [closeOnSelect, embedded, onBackgroundChange, setOpen, workspaceAssignmentsEnabled, selectedWorkspaceForAssignment, onAssignWorkspace])
 
   const handleFileUpload = useCallback(async (event) => {
     const file = event.target.files[0]
@@ -209,10 +212,35 @@ const BackgroundManager = ({
     setIsUploading(true)
 
     try {
-      const record = await bgDB.saveBackgroundFile(file)
-      const objectUrl = await bgDB.getBackgroundURLById(record.id)
+      // Try server first, fallback to IndexedDB
+      let backgroundUrl = null
+      let backgroundMeta = null
+      
+      try {
+        const serverResult = await bgServer.trySaveBackgroundToServer(file, file.name)
+        if (serverResult) {
+          backgroundUrl = serverResult.url
+          backgroundMeta = { 
+            type: 'custom', 
+            id: serverResult.id, 
+            mime: serverResult.mime,
+            url: serverResult.url,
+            fromServer: true
+          }
+        }
+      } catch (e) {
+        console.warn('Server upload failed, using IndexedDB:', e)
+      }
+
+      // Fallback to IndexedDB if server unavailable
+      if (!backgroundUrl) {
+        const record = await bgDB.saveBackgroundFile(file)
+        backgroundUrl = await bgDB.getBackgroundURLById(record.id)
+        backgroundMeta = { type: 'custom', id: record.id, mime: record.type }
+      }
+
       await loadBackgrounds()
-      applyBackground(objectUrl, { type: 'custom', id: record.id, mime: record.type })
+      applyBackground(backgroundUrl, backgroundMeta)
       setIsUploading(false)
     } catch (error) {
       console.error('Upload error:', error)
@@ -226,7 +254,23 @@ const BackgroundManager = ({
   const deleteBackground = useCallback(async (backgroundId) => {
     try {
       const deleted = uploadedBackgroundsRef.current.find(bg => bg.id === backgroundId)
-      await bgDB.deleteBackground(backgroundId)
+      
+      // Try server first if it's a server background
+      if (deleted?.fromServer) {
+        try {
+          await bgServer.tryDeleteBackgroundFromServer(backgroundId)
+        } catch (e) {
+          console.warn('Server delete failed, trying IndexedDB:', e)
+        }
+      }
+      
+      // Also delete from IndexedDB (in case it exists there too)
+      try {
+        await bgDB.deleteBackground(backgroundId)
+      } catch (e) {
+        // Ignore if not in IndexedDB
+      }
+      
       await loadBackgrounds()
       const deletedKey = deriveSelectionKey({ type: 'custom', id: backgroundId }, deleted?.url)
       if (deleted && selectedKey === deletedKey) {
@@ -239,7 +283,6 @@ const BackgroundManager = ({
           applyBackground(fallback.dataUrl, fallback.meta)
         }
       }
-      setContextMenu(null)
     } catch (e) {
       console.error('Failed to delete background', e)
     }
@@ -251,7 +294,6 @@ const BackgroundManager = ({
     if (!embedded && !isControlled && closeOnSelect) {
       setOpen(false)
     }
-    setContextMenu(null)
   }, [applyBackground, closeOnSelect, embedded, isControlled, setOpen])
 
   const formatFileSize = (bytes) => {
@@ -288,47 +330,6 @@ const BackgroundManager = ({
     )
   }, [clearLabel, closeOnSelect, embedded, onClearBackground, resetToDefault, setOpen])
 
-  const openContextMenu = useCallback((event, payload) => {
-    if (!workspaceAssignmentsEnabled) return
-    if (!onAssignWorkspace) return
-    if (!payload?.meta || !payload?.url) return
-    if (typeof window === 'undefined') return
-    event.preventDefault()
-    event.stopPropagation()
-    const menuWidth = 240
-    const optionCount = 1 + Math.max(workspaces.length, 1)
-    const estimatedHeight = 56 + optionCount * 36
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
-    const rawX = event.clientX
-    const rawY = event.clientY
-    const maxX = Math.max(0, viewportWidth - menuWidth - 8)
-    const maxY = Math.max(0, viewportHeight - estimatedHeight - 8)
-    const proposedX = rawX - menuWidth * 0.85
-    const proposedY = rawY - 12
-    const x = Math.min(Math.max(proposedX, 8), maxX)
-    const y = Math.min(Math.max(proposedY, 8), maxY)
-    setContextMenu({
-      x,
-      y,
-      meta: payload.meta,
-      url: payload.url,
-      selectionKey: deriveSelectionKey(payload.meta, payload.url)
-    })
-  }, [workspaces.length])
-
-  const handleAssignment = useCallback((targetId) => {
-    if (!contextMenu) return
-    if (targetId === '__default__') {
-      if (assignDefault) {
-        assignDefault(contextMenu.url, contextMenu.meta)
-        setSelectedKey(contextMenu.selectionKey)
-      }
-    } else if (targetId && onAssignWorkspace && workspaceAssignmentsEnabled) {
-      onAssignWorkspace(targetId, contextMenu.url, contextMenu.meta)
-    }
-    setContextMenu(null)
-  }, [assignDefault, contextMenu, onAssignWorkspace, workspaceAssignmentsEnabled])
 
   const Content = (
     <>
@@ -383,7 +384,6 @@ const BackgroundManager = ({
                   }`}
                 whileHover={{ scale: 1.05 }}
                 onClick={() => applyBackground(bg.dataUrl, bg.meta)}
-                onContextMenu={(e) => openContextMenu(e, { meta: bg.meta, url: bg.dataUrl })}
               >
                 <img
                   src={bg.dataUrl}
@@ -422,7 +422,6 @@ const BackgroundManager = ({
                     }`}
                   whileHover={{ scale: 1.05 }}
                   onClick={() => applyBackground(bg.url, meta)}
-                  onContextMenu={(e) => openContextMenu(e, { meta, url: bg.url })}
                 >
                   {bg.type.startsWith('video/') ? (
                     <video
@@ -470,61 +469,6 @@ const BackgroundManager = ({
     </>
   )
 
-  const contextMenuNode = useMemo(() => {
-    if (!contextMenu) return null
-    if (typeof document === 'undefined') return null
-    return createPortal(
-      <div
-        className="fixed z-[22000]"
-        style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
-      >
-        <div
-          ref={contextMenuRef}
-          className="bg-black/90 backdrop-blur-md border border-white/20 rounded-lg shadow-2xl min-w-[220px] overflow-hidden"
-        >
-          <div className="px-3 py-2 text-xs uppercase tracking-wide text-white/40">Assign Background</div>
-          <button
-            type="button"
-            onClick={() => handleAssignment('__default__')}
-            disabled={!assignDefault}
-            className={`flex w-full items-center justify-between px-3 py-2 text-sm text-left transition-colors ${assignDefault ? 'text-white/80 hover:bg-white/10' : 'text-white/30 cursor-not-allowed'} ${selectedKey === contextMenu.selectionKey ? 'bg-white/15 text-white' : ''}`}
-          >
-            <span>Default</span>
-            {selectedKey === contextMenu.selectionKey && <Check className="w-4 h-4 text-cyan-400" />}
-          </button>
-          {workspaces.length > 0 ? (
-            <>
-              <div className="border-t border-white/10 my-1" />
-              {workspaces.map((ws) => {
-                const assignedMeta = workspaceBackgrounds?.[ws.id]?.meta
-                const isActive = assignedMeta && contextMenu.meta && metaEquals(assignedMeta, contextMenu.meta)
-                const isAnchoredWs = !!anchoredWorkspaceId && anchoredWorkspaceId === ws.id
-                const disabled = isAnchoredWs || !onAssignWorkspace
-                return (
-                  <button
-                    key={ws.id}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => !disabled && handleAssignment(ws.id)}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-sm text-left transition-colors ${disabled ? 'text-white/30 cursor-not-allowed' : 'text-white/80 hover:bg-white/10'} ${isActive ? 'bg-white/15 text-white' : ''}`}
-                  >
-                    <span>
-                      {ws.name || 'Workspace'}
-                      {isAnchoredWs ? ' (anchored)' : ''}
-                    </span>
-                    {isActive && <Check className="w-4 h-4 text-cyan-400" />}
-                  </button>
-                )
-              })}
-            </>
-          ) : (
-            <div className="px-3 py-2 text-xs text-white/40">No workspaces available.</div>
-          )}
-        </div>
-      </div>,
-      document.body
-    )
-  }, [contextMenu, assignDefault, handleAssignment, workspaces, workspaceBackgrounds, anchoredWorkspaceId, metaEquals, selectedKey, onAssignWorkspace])
 
   useEffect(() => {
     loadBackgrounds()
@@ -550,7 +494,6 @@ const BackgroundManager = ({
             {Content}
           </div>
         </div>
-        {contextMenuNode}
       </>
     )
   }
@@ -620,7 +563,6 @@ const BackgroundManager = ({
           </motion.div>
         )}
       </AnimatePresence>
-      {contextMenuNode}
     </>
   )
 }

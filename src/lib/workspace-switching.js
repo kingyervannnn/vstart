@@ -43,6 +43,11 @@ export class WorkspaceSwitchingManager {
     this.lastUrlUpdate = 0
     this.urlUpdateDelay = 300
 
+    // Debounce workspace switches to handle rapid clicks
+    this.pendingSwitchTimeout = null
+    this.pendingSwitchId = null
+    this.switchDebounceDelay = 150
+
     // Track which workspace tab is responsible for the double-click URL toggle
     this.activeToggleTabId = null
   }
@@ -90,30 +95,51 @@ export class WorkspaceSwitchingManager {
       return false
     }
 
-    const mode = this.getSwitchingMode()
-    
-    // Determine if this should be a hard or soft switch
-    let isHardSwitch = false
-    
-    if (switchType === 'hard') {
-      isHardSwitch = true
-    } else if (switchType === 'soft') {
-      isHardSwitch = false
-    } else if (switchType === 'auto') {
-      // Auto-determine based on mode
-      isHardSwitch = mode.singleClickIsHard
+    // Cancel any pending switch
+    if (this.pendingSwitchTimeout) {
+      clearTimeout(this.pendingSwitchTimeout)
+      this.pendingSwitchTimeout = null
     }
 
-    // Apply workspace change immediately
-    this.onWorkspaceChange(workspaceId)
+    // Store the pending switch
+    this.pendingSwitchId = { workspaceId, switchType }
 
-    // Apply theme changes (always happens for both hard and soft switches)
-    this.applyThemeChanges(workspaceId, isHardSwitch)
+    // Debounce the actual switch execution
+    this.pendingSwitchTimeout = setTimeout(() => {
+      const pending = this.pendingSwitchId
+      this.pendingSwitchId = null
+      this.pendingSwitchTimeout = null
 
-    // Handle URL changes for hard switches
-    if (isHardSwitch && mode.slugEnabled) {
-      this.updateUrl(workspace)
-    }
+      if (!pending) return
+
+      const mode = this.getSwitchingMode()
+      
+      // Determine if this should be a hard or soft switch
+      let isHardSwitch = false
+      
+      if (pending.switchType === 'hard') {
+        isHardSwitch = true
+      } else if (pending.switchType === 'soft') {
+        isHardSwitch = false
+      } else if (pending.switchType === 'auto') {
+        // Auto-determine based on mode
+        isHardSwitch = mode.singleClickIsHard
+      }
+
+      // Apply workspace change immediately
+      this.onWorkspaceChange(pending.workspaceId)
+
+      // Apply theme changes (always happens for both hard and soft switches)
+      this.applyThemeChanges(pending.workspaceId, isHardSwitch)
+
+      // Handle URL changes for hard switches
+      if (isHardSwitch && mode.slugEnabled) {
+        const workspace = this.workspaces.find(w => w.id === pending.workspaceId)
+        if (workspace) {
+          this.updateUrl(workspace)
+        }
+      }
+    }, this.switchDebounceDelay)
 
     return true
   }
@@ -259,9 +285,14 @@ export class WorkspaceSwitchingManager {
   }
 
   /**
-   * Cleans up event listeners
+   * Cleans up event listeners and pending operations
    */
   destroy() {
+    if (this.pendingSwitchTimeout) {
+      clearTimeout(this.pendingSwitchTimeout)
+      this.pendingSwitchTimeout = null
+    }
+    this.pendingSwitchId = null
     window.removeEventListener('popstate', this.handlePopState)
     window.removeEventListener('app-workspace-url-change', this.handleUrlChange)
   }

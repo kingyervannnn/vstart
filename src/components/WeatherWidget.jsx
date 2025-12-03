@@ -94,7 +94,7 @@ const roundMaybe = (value, fallback = undefined) => (Number.isFinite(value) ? Ma
 const WEATHER_DETAIL_PIN_KEY = 'vv-weather-detail-pin'
 const WEATHER_DETAIL_SELECTED_KEY = 'vv-weather-detail-selected'
 
-const WeatherWidget = ({ settings = { units: 'metric', layoutPreset: 'preset1', fontPreset: 'industrial', colorPrimary: '#ffffff', colorAccent: '#00ffff', p2OutlineWeek: true, p2ShadeWeek: false, removeOutlines: false, removeBackgrounds: false, verticalOffset: 0 } }) => {
+const WeatherWidget = ({ settings = { units: 'metric', layoutPreset: 'preset1', fontPreset: 'industrial', colorPrimary: '#ffffff', colorAccent: '#00ffff', p2OutlineWeek: true, p2ShadeWeek: false, removeOutlines: false, removeBackgrounds: false, verticalOffset: 0, showDetailsOnHover: true } }) => {
   const [coords, setCoords] = useState(null)
   const [current, setCurrent] = useState(null)
   const [forecast, setForecast] = useState([])
@@ -202,34 +202,40 @@ const WeatherWidget = ({ settings = { units: 'metric', layoutPreset: 'preset1', 
   const preset2Days = forecast.slice(0, 6)
   const preset3Days = forecast.slice(0, 7)
   const interactivePresetActive = isPreset2 || isPreset3
-  const selectedForecastDay = selectedDayKey && selectedDayKey !== 'current'
+  const explicitSelectedDay = selectedDayKey && selectedDayKey !== 'current'
     ? forecast.find(day => day?.key === selectedDayKey)
     : null
-  const detailKey = !selectedDayKey
+  const allowHoverDetails = settings.showDetailsOnHover !== false
+  const hoverDetailKey = allowHoverDetails && !detailPinned ? hoveredDayKey : null
+  const effectiveDetailKey = selectedDayKey || hoverDetailKey || null
+  const effectiveForecastDay = effectiveDetailKey && effectiveDetailKey !== 'current'
+    ? forecast.find(day => day?.key === effectiveDetailKey)
+    : null
+  const detailHourlyKey = !effectiveDetailKey
     ? null
-    : selectedDayKey === 'current'
+    : effectiveDetailKey === 'current'
       ? current?.dateKey
-      : selectedForecastDay?.key
-  const detailHourlyEntries = detailKey ? hourlyMap?.[detailKey] : null
+      : effectiveDetailKey
+  const detailHourlyEntries = detailHourlyKey ? hourlyMap?.[detailHourlyKey] : null
   const hourlyPreview = useMemo(() => buildHourlyPreview(detailHourlyEntries), [detailHourlyEntries])
-  const detailTempText = !selectedDayKey
+  const detailTempText = !effectiveDetailKey
     ? '—'
-    : selectedDayKey === 'current'
+    : effectiveDetailKey === 'current'
       ? currentTempDisplay
-      : `${selectedForecastDay?.hi ?? '—'}°/${selectedForecastDay?.lo ?? '—'}°`
-  const detailHumidityText = !selectedDayKey
+      : `${effectiveForecastDay?.hi ?? '—'}°/${effectiveForecastDay?.lo ?? '—'}°`
+  const detailHumidityText = !effectiveDetailKey
     ? '—'
-    : selectedDayKey === 'current'
+    : effectiveDetailKey === 'current'
       ? (current?.humidity != null ? `${Math.round(current.humidity)}%` : '—')
-      : formatRange(selectedForecastDay?.humidityMin, selectedForecastDay?.humidityMax, '%')
-  const detailWindValue = selectedDayKey === 'current' ? current?.wind : selectedForecastDay?.wind
+      : formatRange(effectiveForecastDay?.humidityMin, effectiveForecastDay?.humidityMax, '%')
+  const detailWindValue = effectiveDetailKey === 'current' ? current?.wind : effectiveForecastDay?.wind
   const detailWindText = detailWindValue != null ? `${Math.round(detailWindValue)} ${windUnitLabel}` : '—'
-  const detailCondText = !selectedDayKey
+  const detailCondText = !effectiveDetailKey
     ? '—'
-    : selectedDayKey === 'current'
+    : effectiveDetailKey === 'current'
       ? `${current?.name || 'Local'} · ${current?.cond || '—'}`
-      : `${selectedForecastDay?.label || '—'} · ${selectedForecastDay?.cond || '—'}`
-  const showDetailsPanel = interactivePresetActive && !!selectedDayKey
+      : `${effectiveForecastDay?.label || '—'} · ${effectiveForecastDay?.cond || '—'}`
+  const showDetailsPanel = interactivePresetActive && !!effectiveDetailKey
   const isCurrentHighlighted = (selectedDayKey === 'current') || (hoveredDayKey === 'current')
   const currentTileBackground = isCurrentHighlighted
     ? hexToRgba(colorAccent, removeBackgrounds ? 0.18 : 0.18)
@@ -324,7 +330,7 @@ const WeatherWidget = ({ settings = { units: 'metric', layoutPreset: 'preset1', 
   }, [isPreset2, isPreset3, selectedDayKey])
 
   useEffect(() => {
-    if (!showDetailsPanel) return
+    if (!showDetailsPanel || !selectedDayKey) return
     const handlePointerDown = (event) => {
       const target = event.target
       if (
@@ -340,7 +346,7 @@ const WeatherWidget = ({ settings = { units: 'metric', layoutPreset: 'preset1', 
     }
     document.addEventListener('pointerdown', handlePointerDown)
     return () => document.removeEventListener('pointerdown', handlePointerDown)
-  }, [showDetailsPanel, detailPinned])
+  }, [showDetailsPanel, detailPinned, selectedDayKey])
 
   useEffect(() => {
     try {

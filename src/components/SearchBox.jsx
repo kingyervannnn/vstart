@@ -680,6 +680,9 @@ const SearchBox = forwardRef(({
   urlWorkspaceId,
   searchBarBlurPx: searchBarBlurPxOverride,
   suggestionsBlurPx: suggestionsBlurPxOverride,
+  centerContentOpen = false,
+  workspaceThemingEnabled = true,
+  resolvedGlowColor,
 }, ref) => {
   const [query, setQuery] = useState('')
   const [engine, setEngine] = useState(() => {
@@ -966,6 +969,10 @@ const SearchBox = forwardRef(({
 
   const focusSlugColor = useMemo(() => {
     if (!allowFocusGlow) return null
+    // If workspace theming is disabled, always use master override glow color
+    if (!workspaceThemingEnabled) {
+      return settings?.speedDial?.glowColor || '#00ffff66'
+    }
     try {
       const slugifyLocal = (name) => {
         try {
@@ -982,10 +989,18 @@ const SearchBox = forwardRef(({
       const map = settings?.speedDial?.workspaceGlowColors || {}
       return match ? (map[match.id] || settings?.speedDial?.glowColor || '#00ffff66') : null
     } catch { return null }
-  }, [allowFocusGlow, workspaces, settings?.speedDial?.workspaceGlowColors, settings?.speedDial?.glowColor, currentSlugPath])
+  }, [allowFocusGlow, workspaceThemingEnabled, workspaces, settings?.speedDial?.workspaceGlowColors, settings?.speedDial?.glowColor, currentSlugPath])
 
   const focusNonSlugColor = useMemo(() => {
     if (!allowFocusGlow) return null
+    // If workspace theming is disabled, always use master override glow color
+    if (!workspaceThemingEnabled) {
+      return settings?.speedDial?.glowColor || '#00ffff66'
+    }
+    // Use resolved glow color if provided (from App.jsx), otherwise fall back to local resolution
+    if (resolvedGlowColor) {
+      return resolvedGlowColor
+    }
     try {
       const wsId = activeWorkspaceId
       const anchoredId = settings?.speedDial?.anchoredWorkspaceId || null
@@ -993,7 +1008,7 @@ const SearchBox = forwardRef(({
       const map = settings?.speedDial?.workspaceGlowColors || {}
       return (!useFallback && map[wsId]) || settings?.speedDial?.glowColor || '#00ffff66'
     } catch { return null }
-  }, [allowFocusGlow, activeWorkspaceId, settings?.speedDial?.workspaceGlowColors, settings?.speedDial?.glowColor, settings?.speedDial?.anchoredWorkspaceId])
+  }, [allowFocusGlow, workspaceThemingEnabled, resolvedGlowColor, activeWorkspaceId, settings?.speedDial?.workspaceGlowColors, settings?.speedDial?.glowColor, settings?.speedDial?.anchoredWorkspaceId])
 
   const slugModeEnabled = !!(settings?.general?.autoUrlDoubleClick)
   const focusCandidateColor = slugModeEnabled ? focusSlugColor : focusNonSlugColor
@@ -1271,10 +1286,28 @@ const SearchBox = forwardRef(({
       } else {
         return
       }
-      const offset = Math.round(desiredCenterY - baseCenterY)
+      
+      // Adjust offset when center content (notes/email) is open
+      let centerContentOffset = 0
+      if (centerContentOpen && floatingMode === 'center') {
+        const pushDirection = settings?.widgets?.searchBarPushDirection || 'down'
+        // Measure the center content element to get its height
+        const centerContentEl = document.querySelector('.notes-overlay-slot')
+        if (centerContentEl) {
+          const contentRect = centerContentEl.getBoundingClientRect()
+          const contentHeight = contentRect.height || 0
+          if (contentHeight > 0) {
+            // Push by about 40% of the content height to avoid overlap
+            const pushAmount = contentHeight * 0.4 + 60 // 60px minimum spacing
+            centerContentOffset = pushDirection === 'up' ? -pushAmount : pushAmount
+          }
+        }
+      }
+      
+      const offset = Math.round(desiredCenterY - baseCenterY + centerContentOffset)
       setFloatingOffset(prev => (Math.abs(prev - offset) > 0.5 ? offset : prev))
     } catch {}
-  }, [floatingMode, searchContainerEl, isClassicLayout])
+  }, [floatingMode, searchContainerEl, isClassicLayout, centerContentOpen, settings?.widgets?.searchBarPushDirection])
 
   useEffect(() => {
     if (!floatingMode) {
@@ -1295,13 +1328,20 @@ const SearchBox = forwardRef(({
         ro = new ResizeObserver(() => recalcFloatingOffset())
         ro.observe(searchContainerEl)
       }
+      // Also observe center content element when it's open
+      if (centerContentOpen) {
+        const centerContentEl = document.querySelector('.notes-overlay-slot')
+        if (centerContentEl && ro) {
+          ro.observe(centerContentEl)
+        }
+      }
     } catch {}
     return () => {
       window.removeEventListener('resize', recalcFloatingOffset)
       window.removeEventListener('orientationchange', recalcFloatingOffset)
       try { ro && ro.disconnect() } catch {}
     }
-  }, [floatingMode, recalcFloatingOffset, searchContainerEl])
+  }, [floatingMode, recalcFloatingOffset, searchContainerEl, centerContentOpen])
 
   const [glowStrength, setGlowStrength] = useState(0)
   const glowStrengthRef = useRef(0)
@@ -2699,6 +2739,14 @@ const SearchBox = forwardRef(({
     } catch { return 'workspace' }
   }
   const assignedGlowFor = (wsId) => {
+    // If workspace theming is disabled, always use master override glow color
+    if (!workspaceThemingEnabled) {
+      return settings?.speedDial?.glowColor || '#00ffff66'
+    }
+    // If resolved glow color is provided and matches the current workspace, use it
+    if (resolvedGlowColor && wsId === activeWorkspaceId) {
+      return resolvedGlowColor
+    }
     const anchoredId = settings?.speedDial?.anchoredWorkspaceId || null
     if (!wsId || (anchoredId && wsId === anchoredId)) {
       return settings?.speedDial?.glowColor || '#00ffff66'
@@ -2742,7 +2790,7 @@ const SearchBox = forwardRef(({
       window.removeEventListener('app-workspace-url-change', handleCustom)
       window.removeEventListener('popstate', handlePop)
     }
-  }, [sbCfg.glowByUrl, allowTransientGlow, settings?.speedDial?.workspaceGlowColors, settings?.speedDial?.glowColor, settings?.speedDial?.anchoredWorkspaceId, workspaces, updateSlugPathFromWindow, normalizeSlugPath])
+  }, [sbCfg.glowByUrl, allowTransientGlow, settings?.speedDial?.workspaceGlowColors, settings?.speedDial?.glowColor, settings?.speedDial?.anchoredWorkspaceId, workspaces, updateSlugPathFromWindow, normalizeSlugPath, resolvedGlowColor, activeWorkspaceId, workspaceThemingEnabled])
 
   // Handle input changes and fetch suggestions
   const handleInputChange = useCallback((value) => {
@@ -3602,9 +3650,14 @@ const SearchBox = forwardRef(({
 
   const clearAttachedImage = () => setAttachedImage(null)
   
-  // Expose attachImageFromFile via ref
+  // Expose methods via ref
   useImperativeHandle(ref, () => ({
-    attachImage: attachImageFromFile
+    attachImage: attachImageFromFile,
+    focus: () => {
+      try {
+        inputRef.current?.focus()
+      } catch {}
+    }
   }), [attachImageFromFile])
 
   const submitImageToLens = async (file, queryText) => {

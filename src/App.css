@@ -118,3 +118,29 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Prevent scroll jumps on toggle interactions */
+label[class*="inline-flex"] input[type="checkbox"][class*="peer absolute opacity-0"] {
+  scroll-margin: 0;
+  scroll-padding: 0;
+  scroll-behavior: auto;
+}
+
+label[class*="inline-flex"][class*="cursor-pointer"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  /* Prevent scroll on touch */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent scroll when toggles are focused */
+label[class*="inline-flex"][class*="cursor-pointer"]:has(input[type="checkbox"]:focus) {
+  position: relative;
+}
+
+/* Additional scroll prevention for settings scroll containers */
+[class*="overflow-y-auto"][class*="max-h-[70vh]"] {
+  scroll-behavior: auto;
+  /* Prevent scroll anchoring that can cause jumps */
+  overflow-anchor: none;
+}

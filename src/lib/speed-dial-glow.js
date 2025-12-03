@@ -141,7 +141,9 @@ export function applySoftSwitchGlow(
   const softSwitchBehavior = settings?.speedDial?.softSwitchGlowBehavior || 'noGlow'
   const glowEnabled = settings?.speedDial?.glowEnabled
 
-  const workspaceGlowColors = settings?.speedDial?.workspaceGlowColors || {}
+  // Check if workspace theming is enabled - if not, ignore workspace-specific glow colors
+  const workspaceThemingEnabled = settings?.workspaceThemingEnabled !== false
+  const workspaceGlowColors = workspaceThemingEnabled ? (settings?.speedDial?.workspaceGlowColors || {}) : {}
   const fallbackColor = settings?.speedDial?.glowColor || '#00ffff66'
   const per = Number(settings?.speedDial?.glowIntensity ?? 1.0)
   const cap = Number(settings?.appearance?.glowMaxIntensity ?? 2.5)
@@ -168,10 +170,12 @@ export function applySoftSwitchGlow(
   }
 
   const isDefaultLocation = normalizedPath === '/' || normalizedPath === '/index.html'
-  const allowLastInGlow = lastInEnabled && lastInIncludeGlow && isDefaultLocation && !hardWorkspaceId && !!activeWorkspaceId && (!anchoredWorkspaceId || anchoredWorkspaceId !== activeWorkspaceId)
+  const allowLastInGlow = workspaceThemingEnabled && lastInEnabled && lastInIncludeGlow && isDefaultLocation && !hardWorkspaceId && !!activeWorkspaceId && (!anchoredWorkspaceId || anchoredWorkspaceId !== activeWorkspaceId)
 
   const getGlow = (workspaceId, allowWorkspaceColor = true) => {
-    const resolvedId = allowWorkspaceColor ? workspaceId : null
+    // If workspace theming is disabled, always use fallback color
+    const shouldUseWorkspaceColor = workspaceThemingEnabled && allowWorkspaceColor
+    const resolvedId = shouldUseWorkspaceColor ? workspaceId : null
     const useFallback = !resolvedId || (anchoredWorkspaceId && resolvedId === anchoredWorkspaceId)
     const color = (!useFallback && workspaceGlowColors[resolvedId]) || fallbackColor
     if (!color) return ''

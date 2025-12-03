@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 
-const IconThemeFilters = ({ settings, activeWorkspaceId, anchoredWorkspaceId }) => {
+const IconThemeFilters = ({ settings, activeWorkspaceId, anchoredWorkspaceId, workspaceThemingEnabled }) => {
     const enabled = settings?.iconTheming?.enabled;
 
     // Resolve effective settings
@@ -11,6 +11,11 @@ const IconThemeFilters = ({ settings, activeWorkspaceId, anchoredWorkspaceId }) 
             opacity: settings?.iconTheming?.opacity ?? 0.5,
             grayscaleIntensity: settings?.iconTheming?.grayscaleIntensity ?? 1,
         };
+
+        // If workspace theming is disabled, always use global settings
+        if (!workspaceThemingEnabled) {
+            return globalSettings;
+        }
 
         if (!activeWorkspaceId || activeWorkspaceId === 'default' || activeWorkspaceId === anchoredWorkspaceId) {
             return globalSettings;
@@ -28,7 +33,7 @@ const IconThemeFilters = ({ settings, activeWorkspaceId, anchoredWorkspaceId }) 
         result.opacity = linkOpacity ? globalSettings.opacity : (workspaceSettings?.opacity ?? globalSettings.opacity);
         result.grayscaleIntensity = linkGrayscale ? globalSettings.grayscaleIntensity : (workspaceSettings?.grayscaleIntensity ?? globalSettings.grayscaleIntensity);
         return result;
-    }, [settings?.iconTheming, activeWorkspaceId, anchoredWorkspaceId]);
+    }, [settings?.iconTheming, activeWorkspaceId, anchoredWorkspaceId, workspaceThemingEnabled]);
 
     const { mode, color, opacity, grayscaleIntensity } = effectiveSettings;
 

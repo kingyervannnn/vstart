@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Folder, FolderPlus, Upload, Image, Trash2, ExternalLink as LinkIcon, ChevronLeft, Layers, Home, Grid2X2, AppWindow, LayoutList, Plus, Edit3, Copy } from 'lucide-react'
@@ -125,6 +125,8 @@ const VivaldiSpeedDial = ({
   lastInFallbackWorkspaceId = null,
   onWorkspaceAnchor,
   onDialLayoutChange,
+  appearanceWorkspacesEnabled = false,
+  workspaceThemingEnabled = true,
 }) => {
   // Experimental mode flag retained for conditional UI paths
   const isExperimental = true
@@ -152,6 +154,7 @@ const VivaldiSpeedDial = ({
         lastInFallbackWorkspaceId={lastInFallbackWorkspaceId}
         onWorkspaceAnchor={onWorkspaceAnchor}
         onDialLayoutChange={onDialLayoutChange}
+        appearanceWorkspacesEnabled={appearanceWorkspacesEnabled}
       />
     )
   }
@@ -213,6 +216,8 @@ const VivaldiSpeedDial = ({
     orbitron: 'Orbitron, Inter, system-ui, sans-serif',
   }
   const resolveWorkspaceFont = (wsId) => {
+    // If workspace theming is disabled, don't resolve workspace-specific fonts
+    if (!workspaceThemingEnabled) return undefined
     const sel = (settings?.speedDial?.workspaceTextFonts || {})[wsId]
     if (!sel) return undefined
     const key = String(sel).trim().toLowerCase()
@@ -726,14 +731,35 @@ const VivaldiSpeedDial = ({
     }
   })
 
+  // Resolve workspace-specific blur (similar to how glow colors work)
+  // Note: This is in the unused non-experimental path, but kept for consistency
+  const workspaceBlurOverrides = settings?.speedDial?.workspaceBlurOverrides || {};
+  const effectiveBlurPx = (() => {
+    // When appearance workspaces are disabled, ignore workspace-specific blur overrides
+    // and always use the master blur value
+    if (!appearanceWorkspacesEnabled) {
+      return Math.max(0, Number(settings?.speedDial?.blurPx ?? 0));
+    }
+    // Use hardWorkspaceId if available, otherwise fall back to activeWorkspaceId
+    const workspaceIdToCheck = hardWorkspaceId || activeWorkspaceId;
+    
+    if (workspaceIdToCheck && workspaceBlurOverrides[workspaceIdToCheck] !== undefined) {
+      const override = Number(workspaceBlurOverrides[workspaceIdToCheck]);
+      if (Number.isFinite(override)) {
+        return Math.max(0, override);
+      }
+    }
+    return Math.max(0, Number(settings?.speedDial?.blurPx ?? 0));
+  })();
+
   return (
     <div className="w-full">
       {/* Speed Dial Wrapper applying blur (now includes title at top) */}
       <div
         style={{
           position: 'relative',
-          backdropFilter: `blur(${(Number(settings?.speedDial?.blurPx ?? 0)) * (openFolder ? 1.35 : 1)}px)`,
-          WebkitBackdropFilter: `blur(${(Number(settings?.speedDial?.blurPx ?? 0)) * (openFolder ? 1.35 : 1)}px)`,
+          backdropFilter: `blur(${effectiveBlurPx * (openFolder ? 1.35 : 1)}px)`,
+          WebkitBackdropFilter: `blur(${effectiveBlurPx * (openFolder ? 1.35 : 1)}px)`,
           borderRadius: '12px',
           border: isExperimental ? '2px solid rgba(255,255,255,0.2)' : 'none',
           boxShadow: isExperimental ? '0 20px 60px rgba(0,0,0,0.35)' : 'none',
@@ -1037,7 +1063,7 @@ const ClassicWorkspaceTabs = ({ items, activeId, onSelect, onAdd, onRemove, onRe
     return () => clearTimeout(timer)
   }, [drag.justDropped])
 
-  const dialBlurPx = Number.isFinite(Number(settings?.speedDial?.blurPx)) ? Math.max(0, Number(settings.speedDial.blurPx)) : 0
+  const dialBlurPx = effectiveBlurPx
   const matchDialBlur = !!(wsButtonStyle?.matchDialBlur)
   const activeTabBlurPx = matchDialBlur ? dialBlurPx : 12
   const inactiveTabBlurPx = 4
@@ -1127,7 +1153,7 @@ const ClassicWorkspaceTabs = ({ items, activeId, onSelect, onAdd, onRemove, onRe
   )
 }
 
-export default VivaldiSpeedDial
+export default memo(VivaldiSpeedDial)
 
 // New experimental dial with invisible grid, layered per-workspace, and protruding tabs
 function ExperimentalDial({
@@ -1152,6 +1178,8 @@ function ExperimentalDial({
   lastInFallbackWorkspaceId = null,
   onWorkspaceAnchor,
   onDialLayoutChange,
+  appearanceWorkspacesEnabled = false,
+  workspaceThemingEnabled = true,
 }) {
   const effectiveHardWorkspaceId = hardWorkspaceId || lastInFallbackWorkspaceId || null
   const isLastInFallbackActive = !hardWorkspaceId && !!lastInFallbackWorkspaceId
@@ -1169,6 +1197,26 @@ function ExperimentalDial({
   const masterLayoutMode = (String(layoutModeProp || settings?.appearance?.masterLayout || 'modern').toLowerCase() === 'classic') ? 'classic' : 'modern'
   const isClassicMasterLayout = masterLayoutMode === 'classic'
   const layoutKey = isClassicMasterLayout ? 'classic' : 'modern'
+  
+  // Resolve workspace-specific blur (similar to how glow colors work)
+  const workspaceBlurOverrides = settings?.speedDial?.workspaceBlurOverrides || {};
+  const effectiveBlurPx = (() => {
+    // When appearance workspaces are disabled, ignore workspace-specific blur overrides
+    // and always use the master blur value
+    if (!appearanceWorkspacesEnabled) {
+      return Math.max(0, Number(settings?.speedDial?.blurPx ?? 0));
+    }
+    // Use effectiveHardWorkspaceId (from URL) for blur lookup to match the actual workspace being viewed
+    const workspaceIdToCheck = effectiveHardWorkspaceId || activeWorkspaceId;
+    
+    if (workspaceIdToCheck && workspaceBlurOverrides[workspaceIdToCheck] !== undefined) {
+      const override = Number(workspaceBlurOverrides[workspaceIdToCheck]);
+      if (Number.isFinite(override)) {
+        return Math.max(0, override);
+      }
+    }
+    return Math.max(0, Number(settings?.speedDial?.blurPx ?? 0));
+  })();
   const swapClassicTabsWithPageSwitcher = !!settings?.appearance?.swapClassicTabsWithPageSwitcher
   const swapModernTabsWithPageSwitcher = !!settings?.appearance?.swapModernTabsWithPageSwitcher
   const swapTabsWithPageSwitcher = isClassicMasterLayout ? swapClassicTabsWithPageSwitcher : swapModernTabsWithPageSwitcher
@@ -1440,7 +1488,7 @@ function ExperimentalDial({
   const tightTabzEnabled = currentTabsMode === 'tight-tabz'
   const tabsModeIsTabs = currentTabsMode === 'tabs'
   const tightFamilyEnabled = tightTabsEnabled || tightTabzEnabled
-  const dialBlurAmount = Number(settings?.speedDial?.blurPx ?? 0)
+  const dialBlurAmount = effectiveBlurPx
   const dialSurfaceColor = settings?.speedDial?.transparentBg ? 'rgba(23,27,40,0.55)' : 'rgba(255,255,255,0.10)'
 
   // Header color/font globals for use outside the inner render scope
@@ -1459,12 +1507,14 @@ function ExperimentalDial({
   }, [settings?.speedDial?.headerBannerFontOverrideEnabled, settings?.speedDial?.headerBannerFont])
   const presetFontMapLocal = WORKSPACE_FONT_PRESETS
   const resolveWorkspaceFontLocal = useCallback((wsId) => {
+    // If workspace theming is disabled, don't resolve workspace-specific fonts
+    if (!workspaceThemingEnabled) return undefined
     const sel = (settings?.speedDial?.workspaceTextFonts || {})[wsId]
     if (!sel) return undefined
     const key = String(sel).trim().toLowerCase()
     if (presetFontMapLocal[key]) return presetFontMapLocal[key]
     return sel
-  }, [settings?.speedDial?.workspaceTextFonts])
+  }, [settings?.speedDial?.workspaceTextFonts, workspaceThemingEnabled])
   const resolveFontGlobal = useMemo(() => resolveWorkspaceFontLocal(activeWorkspaceId), [activeWorkspaceId, resolveWorkspaceFontLocal])
 
   const onTabMouseDown = (e, id) => {
@@ -3100,6 +3150,8 @@ function ExperimentalDial({
     orbitron: 'Orbitron, Inter, system-ui, sans-serif',
   }
   const resolveWorkspaceFont = (wsId) => {
+    // If workspace theming is disabled, don't resolve workspace-specific fonts
+    if (!workspaceThemingEnabled) return undefined
     const sel = (settings?.speedDial?.workspaceTextFonts || {})[wsId]
     if (!sel) return undefined
     const key = String(sel).trim().toLowerCase()
@@ -3504,9 +3556,6 @@ function ExperimentalDial({
         const resolveColor = canUseWorkspaceColor
           ? stripAlphaFromHex(workspaceTextColors[stylingWorkspaceId] || defaultTextColor)
           : defaultTextColor
-        const resolveFont = (matchWorkspaceFonts && !isStylingAnchored && stylingWorkspaceId)
-          ? resolveWorkspaceFont(stylingWorkspaceId)
-          : undefined
 
         // Header color mode + tokens
         const headerModeMap = settings?.speedDial?.workspaceHeaderColorMode || {};
@@ -3516,6 +3565,11 @@ function ExperimentalDial({
         const headerResolver = useMemo(() => createThemeTokenResolver(settings, workspaces, currentPathStr), [settings, workspaces, currentPathStr]);
         const headerTokens = useMemo(() => headerResolver.resolveTokens(stylingWorkspaceId || null), [headerResolver, stylingWorkspaceId]);
         const effectiveHeaderColor = headerTokens.headerColor;
+        // Use font from headerTokens (which respects workspaceThemingEnabled) when available,
+        // otherwise fall back to resolveWorkspaceFont (which also checks workspaceThemingEnabled)
+        const resolveFont = (matchWorkspaceFonts && !isStylingAnchored && stylingWorkspaceId)
+          ? (headerTokens.fontFamily || resolveWorkspaceFont(stylingWorkspaceId))
+          : undefined
         const handleHeaderModeChange = (mode) => {
           const nextMode = String(mode || 'text');
           if (nextMode === selectedHeaderMode) return;
@@ -3677,8 +3731,8 @@ function ExperimentalDial({
             style={{
               position: 'relative',
               background: (settings?.speedDial?.transparentBg ? 'transparent' : 'rgba(255,255,255,0.10)'),
-              backdropFilter: `blur(${openFolder ? 20 : Number(settings?.speedDial?.blurPx ?? 0)}px)`,
-              WebkitBackdropFilter: `blur(${openFolder ? 20 : Number(settings?.speedDial?.blurPx ?? 0)}px)`,
+              backdropFilter: `blur(${openFolder ? 20 : effectiveBlurPx}px)`,
+              WebkitBackdropFilter: `blur(${openFolder ? 20 : effectiveBlurPx}px)`,
               boxShadow: [
                 (settings?.speedDial?.shadow ? '0 20px 60px rgba(0,0,0,0.35), 0 8px 32px rgba(0,0,0,0.25)' : ''),
                 dialGlowShadow,
@@ -4257,7 +4311,7 @@ function ExperimentalDial({
                   const doubleClickGlowStyle = dcFlashColor ? `0 0 0 2px ${dcFlashColor}, 0 0 18px ${colorWithAlpha(dcFlashColor, 0.6)}` : ''
                   const blurEnabled = !!(wsBtn.blur ?? true)
                   const matchDialBlur = !!wsBtn.matchDialBlur
-                  const dialBlurPx = Number.isFinite(Number(settings?.speedDial?.blurPx)) ? Math.max(0, Number(settings.speedDial.blurPx)) : 0
+                  const dialBlurPx = effectiveBlurPx
                   const activeTabBlur = blurEnabled && isActive ? `blur(${matchDialBlur ? dialBlurPx : 12}px)` : undefined
                   const tabBoxShadowParts = [
                     (isActive && wsBtn.shadow ? '0 0 14px rgba(0,0,0,0.25), 0 -2px 8px rgba(0,0,0,0.15)' : ''),
@@ -4326,7 +4380,9 @@ function ExperimentalDial({
                             // Enhanced shadow and glow
                             boxShadow: tabBoxShadowParts,
                             backgroundColor: (settings?.speedDial?.tabHoverShade && hoveredTabId === w.id)
-                              ? hexToRgba(((anchoredWorkspaceId === w.id ? null : workspaceGlowColors[w.id]) || fallbackGlowColor), 0.18)
+                              ? hexToRgba((!workspaceThemingEnabled || anchoredWorkspaceId === w.id)
+                                  ? fallbackGlowColor
+                                  : (workspaceGlowColors[w.id] || fallbackGlowColor), 0.18)
                               : undefined,
                             zIndex: isActive ? 10 : 1
                           }}
@@ -4347,12 +4403,6 @@ function ExperimentalDial({
                         </button>
                       </ContextMenuTrigger>
                       <ContextMenuContent>
-                        <ContextMenuItem
-                          onClick={() => onWorkspaceAnchor?.(w.id)}
-                          className={isAnchored ? 'bg-white text-black font-semibold' : ''}
-                        >
-                          Anchor
-                        </ContextMenuItem>
                         <ContextMenuItem onClick={() => setEditModeAndReorder(!(editMode || tabsReorderEnabled))}>
                           <Edit3 className="w-4 h-4" /> {(editMode || tabsReorderEnabled) ? 'Disable Edit Mode' : 'Enable Edit Mode'}
                         </ContextMenuItem>
@@ -4511,12 +4561,15 @@ function ExperimentalDial({
             const softSwitchGlow = applySoftSwitchGlow(settings, activeWorkspaceId, effectiveHardWorkspaceId, 'tab', w.id)
             const tabPulse = tabTransientGlows[w.id] || ''
             const isAnchored = anchoredWorkspaceId === w.id
-            const accentBase = ((anchoredWorkspaceId === w.id ? null : workspaceGlowColors[w.id]) || fallbackGlowColor)
+            // When workspace theming is disabled, use master glow color instead of workspace-specific colors
+            const accentBase = (!workspaceThemingEnabled || anchoredWorkspaceId === w.id)
+              ? fallbackGlowColor
+              : (workspaceGlowColors[w.id] || fallbackGlowColor)
             const backgroundEnabled = !!(wsBtn.background ?? true)
             const shadowEnabled = !!(wsBtn.shadow ?? true)
             const blurEnabled = !!(wsBtn.blur ?? true)
             const matchDialBlur = !!wsBtn.matchDialBlur
-            const dialBlurPx = Number.isFinite(Number(settings?.speedDial?.blurPx)) ? Math.max(0, Number(settings.speedDial.blurPx)) : 0
+            const dialBlurPx = effectiveBlurPx
             const hoverStyleRaw = settings?.speedDial?.tabHoverStyle || (settings?.speedDial?.tabHoverShade ? 'shade-color' : 'none')
             const hoverStyle = hoverStyleRaw
             const isHovered = hoveredTabId === w.id
@@ -4704,12 +4757,6 @@ function ExperimentalDial({
                   </button>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
-                  <ContextMenuItem
-                    onClick={() => onWorkspaceAnchor?.(w.id)}
-                    className={isAnchored ? 'bg-white text-black font-semibold' : ''}
-                  >
-                    Anchor
-                  </ContextMenuItem>
                   <ContextMenuItem onClick={() => setEditModeAndReorder(!(editMode || tabsReorderEnabled))}>
                     <Edit3 className="w-4 h-4" /> {(editMode || tabsReorderEnabled) ? 'Disable Edit Mode' : 'Enable Edit Mode'}
                   </ContextMenuItem>

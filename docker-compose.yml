@@ -12,26 +12,37 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - ai-api
-      - icons-api
+      - storage-api
       - stt-api
       - image-search-api
+      - gmail-api
+      - notes-api
     volumes:
       - ./src:/app/src:ro
       - ./public:/app/public:ro
     restart: unless-stopped
     container_name: vivaldi-hybrid-startpage
 
-  icons-api:
+  storage-api:
     image: node:18-alpine
     working_dir: /app
-    command: node server/icons-server.mjs
+    command: node server/storage-server.mjs
+    environment:
+      - PORT=3100
+      - ICONS_DIR=/app/uploads/icons
+      - BACKGROUNDS_DIR=/app/uploads/backgrounds
     ports:
       - "3100:3100"
     volumes:
       - ./server:/app/server:ro
       - ./uploads:/app/uploads
     restart: unless-stopped
-    container_name: vivaldi-icons-api
+    container_name: vivaldi-storage-api
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3100/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   ai-api:
     image: node:18-alpine
@@ -68,6 +79,48 @@ services:
     container_name: vivaldi-image-search-api
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3300/image-search/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  gmail-api:
+    image: node:18-alpine
+    working_dir: /app
+    command: node server/gmail-server.mjs
+    environment:
+      - GMAIL_PORT=3500
+      - GMAIL_DATA_DIR=/app/uploads/gmail
+      - GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID:-}
+      - GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET:-}
+    ports:
+      - "3500:3500"
+    volumes:
+      - ./server:/app/server:ro
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    container_name: vivaldi-gmail-api
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3500/gmail/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  notes-api:
+    image: node:18-alpine
+    working_dir: /app
+    command: node server/notes-server.mjs
+    environment:
+      - NOTES_PORT=3400
+      - NOTES_ROOT=/app/uploads/notes
+    ports:
+      - "3400:3400"
+    volumes:
+      - ./server:/app/server:ro
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    container_name: vivaldi-notes-api
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3400/notes/health || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5

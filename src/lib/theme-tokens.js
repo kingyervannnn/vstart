@@ -169,6 +169,46 @@ export class ThemeTokenResolver {
     // Initialize header color mode per workspace (and Base)
     this.workspaceHeaderColorMode = settings.speedDial?.workspaceHeaderColorMode || {}
     this.BASE_KEY = '__base__'
+    // Cache for resolved tokens to avoid redundant calculations
+    this.tokenCache = new Map()
+    this.cacheKey = null
+  }
+
+  /**
+   * Generates a cache key from the current state
+   */
+  getCacheKey(workspaceId, options) {
+    const path = String(this.currentPath || '/').trim() || '/'
+    const anchoredId = this.settings?.speedDial?.anchoredWorkspaceId || null
+    const optsKey = JSON.stringify(options || {})
+    return `${workspaceId || 'none'}:${path}:${anchoredId || 'none'}:${optsKey}`
+  }
+
+  /**
+   * Invalidates the cache (call when settings change)
+   */
+  invalidateCache() {
+    this.tokenCache.clear()
+    this.cacheKey = null
+  }
+
+  /**
+   * Updates resolver state and invalidates cache if needed
+   */
+  updateState(settings, workspaces, currentPath) {
+    const settingsChanged = this.settings !== settings
+    const workspacesChanged = this.workspaces !== workspaces
+    const pathChanged = this.currentPath !== currentPath
+
+    if (settingsChanged || workspacesChanged || pathChanged) {
+      this.settings = settings
+      this.workspaces = workspaces
+      this.currentPath = currentPath
+      // Only invalidate cache if settings or workspaces changed (path changes are expected)
+      if (settingsChanged || workspacesChanged) {
+        this.invalidateCache()
+      }
+    }
   }
 
   _normalizeKey(workspaceId) {
@@ -203,6 +243,12 @@ export class ThemeTokenResolver {
    * Resolves theme tokens for a specific workspace context
    */
   resolveTokens(workspaceId, options = {}) {
+    // Check cache first
+    const cacheKey = this.getCacheKey(workspaceId, options)
+    if (this.tokenCache.has(cacheKey)) {
+      return this.tokenCache.get(cacheKey)
+    }
+
     const {
       forceWorkspaceTheming = false,
       excludeBackground = false,
@@ -210,9 +256,16 @@ export class ThemeTokenResolver {
       unchangeableTextColor = false
     } = options
 
+    // Check if workspace theming is enabled in settings
+    const workspaceThemingEnabled = this.settings?.workspaceThemingEnabled !== false
+    // If workspace theming is disabled, ignore workspace-specific settings
+    const shouldUseWorkspaceTheming = workspaceThemingEnabled
+
     // Determine if workspace theming should apply based on current context
-    const baseShouldApply = forceWorkspaceTheming ||
+    const baseShouldApply = shouldUseWorkspaceTheming && (
+      forceWorkspaceTheming ||
       shouldApplyWorkspaceTheming(workspaceId, this.currentPath, this.workspaces, this.settings)
+    )
 
     const anchoredWorkspaceId = this.settings?.speedDial?.anchoredWorkspaceId || null
     const isAnchored = !!(anchoredWorkspaceId && workspaceId && workspaceId === anchoredWorkspaceId)
@@ -225,13 +278,14 @@ export class ThemeTokenResolver {
     const lastInIncludeGlow = typeof lastInConfig.includeGlow === 'boolean' ? lastInConfig.includeGlow : true
     const lastInIncludeTypography = typeof lastInConfig.includeTypography === 'boolean' ? lastInConfig.includeTypography : true
 
-    const allowLastInGlow = !forceWorkspaceTheming && !isAnchored && lastInEnabled && lastInIncludeGlow && isDefaultPath && !!workspaceId
-    const allowLastInTypography = !forceWorkspaceTheming && !isAnchored && lastInEnabled && lastInIncludeTypography && isDefaultPath && !!workspaceId
+    const allowLastInGlow = !forceWorkspaceTheming && !isAnchored && lastInEnabled && lastInIncludeGlow && isDefaultPath && !!workspaceId && shouldUseWorkspaceTheming
+    const allowLastInTypography = !forceWorkspaceTheming && !isAnchored && lastInEnabled && lastInIncludeTypography && isDefaultPath && !!workspaceId && shouldUseWorkspaceTheming
 
-    const workspaceFont = resolveWorkspaceFont(workspaceId, this.settings)
-    const workspaceTextColor = resolveWorkspaceTextColor(workspaceId, this.settings)
-    const workspaceAccentColor = resolveWorkspaceAccentColor(workspaceId, this.settings)
-    const workspaceGlowColor = resolveWorkspaceGlowColor(workspaceId, this.settings)
+    // Only resolve workspace-specific settings if workspace theming is enabled
+    const workspaceFont = shouldUseWorkspaceTheming ? resolveWorkspaceFont(workspaceId, this.settings) : undefined
+    const workspaceTextColor = shouldUseWorkspaceTheming ? resolveWorkspaceTextColor(workspaceId, this.settings) : undefined
+    const workspaceAccentColor = shouldUseWorkspaceTheming ? resolveWorkspaceAccentColor(workspaceId, this.settings) : undefined
+    const workspaceGlowColor = shouldUseWorkspaceTheming ? resolveWorkspaceGlowColor(workspaceId, this.settings) : undefined
 
     const applyWorkspaceTheme = baseShouldApply && !isAnchored
     const applyGlow = applyWorkspaceTheme || allowLastInGlow
@@ -249,8 +303,17 @@ export class ThemeTokenResolver {
     const baseAccentColor = stripAlphaFromHex(this.settings?.theme?.colors?.accent || '#ff00ff')
 
     // Apply workspace overrides based on appearance settings
+    // Fonts are allowed to follow the workspace whenever a workspace font
+    // is configured, except for the anchored workspace (which stays on the
+    // global/default typography). This keeps "Default typography" from
+    // overriding other workspaces.
     let resolvedFont = baseFontFamily
-    if (!unchangeableFont && this.settings?.appearance?.matchWorkspaceFonts && workspaceFont && applyTypography) {
+    if (
+      !unchangeableFont &&
+      this.settings?.appearance?.matchWorkspaceFonts &&
+      workspaceFont &&
+      !isAnchored
+    ) {
       resolvedFont = workspaceFont
     }
 
@@ -285,7 +348,7 @@ export class ThemeTokenResolver {
       headerColor = resolvedTextColor
     }
 
-    return {
+    const result = {
       fontFamily: resolvedFont,
       textColor: resolvedTextColor,
       accentColor: resolvedAccentColor,
@@ -313,6 +376,16 @@ export class ThemeTokenResolver {
         unchangeableTextColor
       }
     }
+
+    // Cache the result (limit cache size to prevent memory issues)
+    if (this.tokenCache.size > 50) {
+      // Remove oldest entries (simple FIFO)
+      const firstKey = this.tokenCache.keys().next().value
+      this.tokenCache.delete(firstKey)
+    }
+    this.tokenCache.set(cacheKey, result)
+
+    return result
   }
 
   /**

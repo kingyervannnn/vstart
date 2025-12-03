@@ -56,6 +56,12 @@ coverage/
 # User uploads (should not be committed)
 uploads/
 
+# Sensitive data files
+uploads/gmail/tokens.json
+uploads/ai/memory.json
+*.credentials.json
+*.oauth.json
+
 # Package manager lock files (keep pnpm-lock.yaml since we use pnpm)
 package-lock.json
 yarn.lock

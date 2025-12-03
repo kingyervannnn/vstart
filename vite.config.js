@@ -11,6 +11,10 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    sourcemap: true,
+    minify: false,
+  },
   server: {
     // Increase body size limit for image uploads
     // Vite uses http-proxy-middleware which has no default body size limit
@@ -18,6 +22,11 @@ export default defineConfig({
       // Voice API (local Node proxy for STT/TTS)
       '/api': {
         target: 'http://127.0.0.1:3099',
+        changeOrigin: true,
+      },
+      // Gmail API (local Node proxy for Gmail integration)
+      '/gmail': {
+        target: 'http://127.0.0.1:3500',
         changeOrigin: true,
       },
       // Local STT server (Faster-Whisper)

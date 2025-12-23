@@ -111,16 +111,19 @@ services:
     command: node server/notes-server.mjs
     environment:
       - NOTES_PORT=3400
-      - NOTES_ROOT=/app/uploads/notes
+      # Point NOTES_ROOT at your actual Obsidian vault on the host
+      - NOTES_ROOT=/vault
     ports:
       - "3400:3400"
     volumes:
       - ./server:/app/server:ro
-      - ./uploads:/app/uploads
+      # Mount host vault directory into container at /vault
+      - /Users/vbitzx/Desktop/SYNC/Vaults:/vault
     restart: unless-stopped
     container_name: vivaldi-notes-api
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3400/notes/health || exit 1"]
+      # Use wget (available in node:18-alpine) instead of curl
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3400/notes/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5

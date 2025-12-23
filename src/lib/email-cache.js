@@ -13,8 +13,13 @@ const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
 /**
  * Get cache key for an email account
  */
-function getCacheKey(email) {
+function getLegacyCacheKey(email) {
   return `${CACHE_KEY_PREFIX}${String(email || '').toLowerCase().trim()}`
+}
+
+function getCacheKey(email, mailbox = 'INBOX') {
+  const normalizedMailbox = String(mailbox || 'INBOX').trim().toUpperCase() || 'INBOX'
+  return `${CACHE_KEY_PREFIX}${String(email || '').toLowerCase().trim()}__${normalizedMailbox}`
 }
 
 /**
@@ -22,10 +27,14 @@ function getCacheKey(email) {
  * @param {string} email - Account email address
  * @returns {Array|null} - Cached emails or null if expired/missing
  */
-export function getCachedEmails(email) {
+export function getCachedEmails(email, mailbox = 'INBOX') {
   try {
-    const key = getCacheKey(email)
-    const cached = localStorage.getItem(key)
+    const key = getCacheKey(email, mailbox)
+    let cached = localStorage.getItem(key)
+    if (!cached && String(mailbox || '').toUpperCase() === 'INBOX') {
+      // Backwards compatibility for older cache format
+      cached = localStorage.getItem(getLegacyCacheKey(email))
+    }
     if (!cached) return null
 
     const data = JSON.parse(cached)
@@ -55,14 +64,21 @@ export function getCachedEmails(email) {
  * @param {string} email - Account email address
  * @param {Array} emails - Array of email objects
  */
-export function setCachedEmails(email, emails) {
+export function setCachedEmails(email, mailbox = 'INBOX', emails) {
   try {
-    if (!email || !Array.isArray(emails)) return
+    let normalizedMailbox = mailbox
+    let normalizedEmails = emails
+    // Backwards compatible signature: (email, emails)
+    if (Array.isArray(mailbox) && emails === undefined) {
+      normalizedMailbox = 'INBOX'
+      normalizedEmails = mailbox
+    }
+    if (!email || !Array.isArray(normalizedEmails)) return
 
-    const key = getCacheKey(email)
+    const key = getCacheKey(email, normalizedMailbox)
     
     // Only cache most recent emails (limit to MAX_CACHED_EMAILS_PER_ACCOUNT)
-    const emailsToCache = emails.slice(0, MAX_CACHED_EMAILS_PER_ACCOUNT)
+    const emailsToCache = normalizedEmails.slice(0, MAX_CACHED_EMAILS_PER_ACCOUNT)
 
     const data = {
       version: CACHE_VERSION,
@@ -83,8 +99,12 @@ export function setCachedEmails(email, emails) {
  */
 export function clearCachedEmails(email) {
   try {
-    const key = getCacheKey(email)
-    localStorage.removeItem(key)
+    const legacyKey = getLegacyCacheKey(email)
+    localStorage.removeItem(legacyKey)
+    // Also clear mailbox-specific keys for common mailboxes
+    for (const mb of ['INBOX', 'SENT', 'STARRED', 'SPAM', 'TRASH']) {
+      localStorage.removeItem(getCacheKey(email, mb))
+    }
   } catch (e) {
     console.error('Error clearing email cache:', e)
   }
@@ -121,9 +141,11 @@ export function getAllCacheInfo() {
           const cached = localStorage.getItem(key)
           if (cached) {
             const data = JSON.parse(cached)
-            const email = key.replace(CACHE_KEY_PREFIX, '')
+            const raw = key.replace(CACHE_KEY_PREFIX, '')
+            const [email, mailbox] = raw.split('__')
             info.push({
               email,
+              mailbox: mailbox || 'INBOX',
               count: Array.isArray(data.emails) ? data.emails.length : 0,
               timestamp: data.timestamp || null,
               age: data.timestamp ? Date.now() - data.timestamp : null
@@ -139,6 +161,8 @@ export function getAllCacheInfo() {
     return []
   }
 }
+
+
 
 
 

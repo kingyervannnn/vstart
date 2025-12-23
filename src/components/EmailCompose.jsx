@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { X, Send, Paperclip } from 'lucide-react'
 
 const EmailCompose = ({
@@ -6,20 +6,52 @@ const EmailCompose = ({
   emailAccounts = [],
   onClose,
   onSend,
-  replyToEmail = null
+  replyToEmail = null,
+  draft = null
 }) => {
   const colorAccent = settings?.colorAccent || '#00ffff'
-  
-  const [fromEmail, setFromEmail] = useState(emailAccounts[0]?.email || '')
-  const [to, setTo] = useState(replyToEmail?.sender || '')
-  const [cc, setCc] = useState('')
-  const [bcc, setBcc] = useState('')
-  const [subject, setSubject] = useState(replyToEmail ? `Re: ${replyToEmail.subject || ''}` : '')
-  const [body, setBody] = useState(replyToEmail ? `\n\n---\nOn ${replyToEmail.date || ''}, ${replyToEmail.sender} wrote:\n${replyToEmail.snippet || ''}` : '')
+
+  const initial = useMemo(() => {
+    const fromFallback = emailAccounts[0]?.email || ''
+    const fromEmail = (draft?.fromEmail || '').trim() || fromFallback
+    const to = (draft?.to || '').trim() || (replyToEmail?.sender || '')
+    const cc = (draft?.cc || '').trim()
+    const bcc = (draft?.bcc || '').trim()
+    const subject =
+      (draft?.subject || '').trim() ||
+      (replyToEmail ? `Re: ${replyToEmail.subject || ''}` : '')
+    const body =
+      (draft?.body ?? '') ||
+      (replyToEmail
+        ? `\n\n---\nOn ${replyToEmail.date || ''}, ${replyToEmail.sender} wrote:\n${replyToEmail.snippet || ''}`
+        : '')
+    return { fromEmail, to, cc, bcc, subject, body }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, replyToEmail, emailAccounts?.[0]?.email])
+
+  const [fromEmail, setFromEmail] = useState(initial.fromEmail)
+  const [to, setTo] = useState(initial.to)
+  const [cc, setCc] = useState(initial.cc)
+  const [bcc, setBcc] = useState(initial.bcc)
+  const [subject, setSubject] = useState(initial.subject)
+  const [body, setBody] = useState(initial.body)
   const [showCc, setShowCc] = useState(false)
   const [showBcc, setShowBcc] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    setFromEmail(initial.fromEmail)
+    setTo(initial.to)
+    setCc(initial.cc)
+    setBcc(initial.bcc)
+    setSubject(initial.subject)
+    setBody(initial.body)
+    setShowCc(false)
+    setShowBcc(false)
+    setError('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial.fromEmail, initial.to, initial.cc, initial.bcc, initial.subject, initial.body])
 
   const handleSend = async () => {
     if (!fromEmail || !to || !subject || !body.trim()) {
@@ -36,6 +68,18 @@ const EmailCompose = ({
         const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {}
         base = env.VITE_GMAIL_API_BASE_URL || env.VITE_API_BASE_URL || ''
         base = String(base || '').replace(/\/+$/, '')
+        if (!base) {
+          const host =
+            typeof window !== 'undefined' && window.location
+              ? String(window.location.hostname || '')
+              : ''
+          const isLocal =
+            host === 'localhost' ||
+            host === '127.0.0.1' ||
+            host === '[::1]' ||
+            host.endsWith('.local')
+          if (isLocal || !host) base = 'http://127.0.0.1:3500'
+        }
       } catch {
         base = ''
       }
@@ -249,6 +293,7 @@ const EmailCompose = ({
 }
 
 export default EmailCompose
+
 
 
 

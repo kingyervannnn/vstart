@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { Mail, Star, Trash2, Archive, Reply, MoreVertical, RefreshCw } from 'lucide-react'
 import { getCachedEmails, setCachedEmails } from '../lib/email-cache'
 
@@ -84,12 +84,22 @@ const EmailList = ({
     highlightText = null,
     selectedEmailId = null,
     onEmailClick = null,
+    onEmailHover = null,
+    onEmailReply = null,
+    externalReloadKey = 0,
+    mailbox = 'INBOX',
 }) => {
     const [emails, setEmails] = useState([])
     const [hoveredEmailId, setHoveredEmailId] = useState(null)
     const [loading, setLoading] = useState(false)
+    const [loadingMore, setLoadingMore] = useState(false)
     const [error, setError] = useState('')
     const [reloadKey, setReloadKey] = useState(0)
+    const [actionBusyId, setActionBusyId] = useState(null)
+    const [nextPageTokens, setNextPageTokens] = useState({})
+    const scrollContainerRef = useRef(null)
+    const mailboxCacheRef = useRef(new Map())
+    const loadSeqRef = useRef(0)
 
     // Styles from settings or defaults
     const colorAccent = settings.colorAccent || '#00ffff'
@@ -122,20 +132,14 @@ const EmailList = ({
 
     // Get accounts to show based on filter
     const filteredAccounts = useMemo(() => {
-        console.log('📧 EmailList filtering:', { filterMode, resolvedWorkspaceId, accountsCount: accounts.length })
-        console.log('📧 Accounts:', accounts.map(acc => ({ email: acc.email, workspaceId: acc.workspaceId })))
-        
         let filtered = []
         if (filterMode === 'all') {
             filtered = accounts
         } else if (resolvedWorkspaceId) {
             filtered = accounts.filter(acc => acc.workspaceId === resolvedWorkspaceId)
-            console.log('📧 Filtered by workspace:', resolvedWorkspaceId, '→', filtered.length, 'accounts')
         } else {
             filtered = accounts.filter(acc => !acc.workspaceId || acc.workspaceId === null)
-            console.log('📧 Filtered unassigned →', filtered.length, 'accounts')
         }
-        console.log('📧 Final filtered accounts:', filtered.map(acc => ({ email: acc.email, workspaceId: acc.workspaceId })))
         return filtered
     }, [accounts, filterMode, resolvedWorkspaceId])
 
@@ -197,23 +201,45 @@ const EmailList = ({
     // Check if auto-load/caching is enabled
     const emailAutoLoad = settings?.widgets?.emailAutoLoad !== false
 
+    const mailboxKey = useMemo(() => {
+        const acctKey = (filteredAccounts || [])
+            .map(a => String(a?.email || '').toLowerCase().trim())
+            .filter(Boolean)
+            .sort()
+            .join(',')
+        return `${String(mailbox || 'INBOX').toUpperCase()}::${acctKey}`
+    }, [filteredAccounts, mailbox])
+
     useEffect(() => {
         if (!filteredAccounts || !filteredAccounts.length) {
             setEmails([])
             setError('')
             setLoading(false)
+            setLoadingMore(false)
+            setNextPageTokens({})
             return
         }
 
         let cancelled = false
+        const seq = ++loadSeqRef.current
 
         const loadEmails = async () => {
+            // Restore per-mailbox cache immediately (prevents UI lag on mailbox switches)
+            try {
+                const cached = mailboxCacheRef.current.get(mailboxKey)
+                if (cached && !cancelled) {
+                    setEmails(Array.isArray(cached.emails) ? cached.emails : [])
+                    setNextPageTokens(cached.nextPageTokens && typeof cached.nextPageTokens === 'object' ? cached.nextPageTokens : {})
+                    setLoading(false)
+                }
+            } catch {}
+
             // Try to load from cache first if auto-load is enabled
             if (emailAutoLoad) {
                 const cachedEmails = []
                 for (const acc of filteredAccounts) {
                     if (!acc || !acc.email) continue
-                    const cached = getCachedEmails(acc.email)
+                    const cached = getCachedEmails(acc.email, mailbox)
                     if (cached && Array.isArray(cached)) {
                         // Add accountEmail to cached emails
                         cached.forEach(email => {
@@ -240,42 +266,27 @@ const EmailList = ({
             
             setError('')
             try {
-                let base = ''
-                try {
-                    const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {}
-                    base =
-                        env.VITE_GMAIL_API_BASE_URL ||
-                        env.VITE_API_BASE_URL ||
-                        ''
-                    base = String(base || '').replace(/\/+$/, '')
-                } catch {
-                    base = ''
-                }
+                const base = getApiBase()
                 const endpointBase = `${base}/gmail/messages`
-                const all = []
-                for (const acc of filteredAccounts) {
-                    if (!acc || !acc.email) continue
-                    const url = `${endpointBase}?email=${encodeURIComponent(acc.email)}&max=25`
+                const max = 25
+
+                const fetchAccount = async (accEmail) => {
+                    const labelParam =
+                        mailbox && mailbox !== 'ALL' ? `&label=${encodeURIComponent(mailbox)}` : ''
+                    const url = `${endpointBase}?email=${encodeURIComponent(accEmail)}&max=${max}${labelParam}`
                     const resp = await fetch(url)
-                    if (!resp.ok) {
-                        // Log but continue with other accounts
-                        const errorData = await resp.json().catch(() => ({}))
-                        // eslint-disable-next-line no-console
-                        console.error('Gmail messages error', resp.status, errorData)
-                        // Show user-friendly error message for API not enabled
-                        if (errorData.error && errorData.error.includes('has not been used')) {
-                            console.error('⚠️ Gmail API not enabled! Enable it at: https://console.cloud.google.com/apis/library/gmail.googleapis.com')
-                        }
-                        continue
-                    }
                     const data = await resp.json().catch(() => ({}))
+                    if (!resp.ok) {
+                        throw new Error(data.error || `Failed to load emails (${resp.status})`)
+                    }
                     const msgs = Array.isArray(data.messages) ? data.messages : []
-                    for (const m of msgs) {
+                    const nextPageToken = data.nextPageToken ? String(data.nextPageToken) : null
+                    const mapped = msgs.map((m) => {
                         const ts = m.timestamp || m.date || m.internalDate || Date.now()
-                        all.push({
+                        return {
                             id: m.id,
-                            accountEmail: acc.email, // Store account email for fetching full content
-                            sender: m.sender || m.from || acc.email,
+                            accountEmail: accEmail,
+                            sender: m.sender || m.from || accEmail,
                             subject: m.subject || '(no subject)',
                             snippet: m.snippet || '',
                             time: formatTime(ts),
@@ -283,9 +294,35 @@ const EmailList = ({
                             unread: !!m.unread,
                             starred: !!m.starred,
                             color: colorAccent
-                        })
-                    }
+                        }
+                    })
+                    return { accEmail, mapped, nextPageToken }
                 }
+
+                const accountEmails = filteredAccounts
+                    .map((a) => a && a.email)
+                    .filter(Boolean)
+
+                const results = await Promise.all(
+                    accountEmails.map(async (accEmail) => {
+                        try {
+                            return await fetchAccount(accEmail)
+                        } catch (e) {
+                            // eslint-disable-next-line no-console
+                            console.error('Gmail messages error', accEmail, e)
+                            return { accEmail, mapped: [], nextPageToken: null, error: e }
+                        }
+                    })
+                )
+
+                if (cancelled || seq !== loadSeqRef.current) return
+
+                const all = results.flatMap((r) => r.mapped || [])
+                const nextTokens = {}
+                results.forEach((r) => {
+                    nextTokens[r.accEmail] = r.nextPageToken
+                })
+
                 if (cancelled) return
                 if (all.length) {
                     all.sort((a, b) => {
@@ -295,6 +332,7 @@ const EmailList = ({
                     })
                     setEmails(all)
                     setError('') // Clear any previous errors if we got emails
+                    setNextPageTokens(nextTokens)
                     
                     // Cache emails per account if auto-load is enabled
                     if (emailAutoLoad) {
@@ -312,9 +350,17 @@ const EmailList = ({
                         
                         // Save cache for each account
                         Object.entries(emailsByAccount).forEach(([accEmail, accountEmails]) => {
-                            setCachedEmails(accEmail, accountEmails)
+                            setCachedEmails(accEmail, mailbox, accountEmails)
                         })
                     }
+
+                    try {
+                        mailboxCacheRef.current.set(mailboxKey, {
+                            emails: all,
+                            nextPageTokens: nextTokens,
+                            savedAt: Date.now()
+                        })
+                    } catch {}
                 } else {
                     // Only show mock emails if we have accounts but no real emails
                     // Don't show mocks if there was an error (empty filteredAccounts would return early)
@@ -322,11 +368,13 @@ const EmailList = ({
                         setError('No emails found. Check console for API errors.')
                     }
                     setEmails([]) // Show empty list instead of mock emails
+                    setNextPageTokens(nextTokens)
                 }
             } catch (e) {
                 if (cancelled) return
                 setError(e.message || 'Failed to load emails')
                 setEmails([])
+                setNextPageTokens({})
             } finally {
                 if (!cancelled) setLoading(false)
             }
@@ -338,7 +386,135 @@ const EmailList = ({
             cancelled = true
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filteredAccounts, reloadKey])
+    }, [filteredAccounts, reloadKey, externalReloadKey, mailboxKey, mailbox])
+
+    const hasMore = useMemo(() => {
+        try {
+            const vals = Object.values(nextPageTokens || {})
+            return vals.some((v) => !!v)
+        } catch {
+            return false
+        }
+    }, [nextPageTokens])
+
+    const loadMore = async () => {
+        if (loading || loadingMore) return
+        if (!filteredAccounts || !filteredAccounts.length) return
+        if (!hasMore) return
+        setLoadingMore(true)
+        setError('')
+        const seq = ++loadSeqRef.current
+        try {
+            const base = getApiBase()
+            const endpointBase = `${base}/gmail/messages`
+            const max = 25
+
+            const fetchAccountMore = async (accEmail) => {
+                const pageToken = nextPageTokens?.[accEmail]
+                if (!pageToken) {
+                    return { accEmail, mapped: [], nextPageToken: null }
+                }
+                const labelParam =
+                    mailbox && mailbox !== 'ALL' ? `&label=${encodeURIComponent(mailbox)}` : ''
+                const url = `${endpointBase}?email=${encodeURIComponent(accEmail)}&max=${max}${labelParam}&pageToken=${encodeURIComponent(pageToken)}`
+                const resp = await fetch(url)
+                const data = await resp.json().catch(() => ({}))
+                if (!resp.ok) {
+                    throw new Error(data.error || `Failed to load more emails (${resp.status})`)
+                }
+                const msgs = Array.isArray(data.messages) ? data.messages : []
+                const nextPageToken = data.nextPageToken ? String(data.nextPageToken) : null
+                const mapped = msgs.map((m) => {
+                    const ts = m.timestamp || m.date || m.internalDate || Date.now()
+                    return {
+                        id: m.id,
+                        accountEmail: accEmail,
+                        sender: m.sender || m.from || accEmail,
+                        subject: m.subject || '(no subject)',
+                        snippet: m.snippet || '',
+                        time: formatTime(ts),
+                        timestamp: ts,
+                        unread: !!m.unread,
+                        starred: !!m.starred,
+                        color: colorAccent
+                    }
+                })
+                return { accEmail, mapped, nextPageToken }
+            }
+
+            const accountEmails = filteredAccounts
+                .map((a) => a && a.email)
+                .filter(Boolean)
+
+            const results = await Promise.all(
+                accountEmails.map(async (accEmail) => {
+                    try {
+                        return await fetchAccountMore(accEmail)
+                    } catch (e) {
+                        // eslint-disable-next-line no-console
+                        console.error('Gmail messages loadMore error', accEmail, e)
+                        return { accEmail, mapped: [], nextPageToken: nextPageTokens?.[accEmail] || null, error: e }
+                    }
+                })
+            )
+
+            if (seq !== loadSeqRef.current) return
+
+            const incoming = results.flatMap((r) => r.mapped || [])
+            const updatedTokens = { ...(nextPageTokens || {}) }
+            results.forEach((r) => {
+                updatedTokens[r.accEmail] = r.nextPageToken
+            })
+
+            setNextPageTokens(updatedTokens)
+            setEmails((prev) => {
+                const seen = new Set()
+                const merged = []
+                for (const item of prev || []) {
+                    const key = `${item.accountEmail || ''}:${item.id || ''}`
+                    if (!item?.id || seen.has(key)) continue
+                    seen.add(key)
+                    merged.push(item)
+                }
+                for (const item of incoming || []) {
+                    const key = `${item.accountEmail || ''}:${item.id || ''}`
+                    if (!item?.id || seen.has(key)) continue
+                    seen.add(key)
+                    merged.push(item)
+                }
+                merged.sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0))
+
+                if (emailAutoLoad) {
+                    try {
+                        const emailsByAccount = {}
+                        merged.forEach((email) => {
+                            const accEmail = email.accountEmail
+                            if (!accEmail) return
+                            if (!emailsByAccount[accEmail]) emailsByAccount[accEmail] = []
+                            emailsByAccount[accEmail].push(email)
+                        })
+                        Object.entries(emailsByAccount).forEach(([accEmail, accountEmails]) => {
+                            setCachedEmails(accEmail, mailbox, accountEmails)
+                        })
+                    } catch {}
+                }
+
+                try {
+                    mailboxCacheRef.current.set(mailboxKey, {
+                        emails: merged,
+                        nextPageTokens: updatedTokens,
+                        savedAt: Date.now()
+                    })
+                } catch {}
+                return merged
+            })
+        } catch (e) {
+            const msg = String(e?.message || '')
+            setError(msg || 'Failed to load more emails')
+        } finally {
+            setLoadingMore(false)
+        }
+    }
 
     const handleRefresh = (e) => {
         e.stopPropagation()
@@ -357,10 +533,183 @@ const EmailList = ({
         })
     }, [emails, searchQuery])
 
+    const getApiBase = () => {
+        try {
+            const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {}
+            let base =
+                env.VITE_GMAIL_API_BASE_URL ||
+                env.VITE_API_BASE_URL ||
+                ''
+            base = String(base || '').replace(/\/+$/, '')
+            if (!base) {
+                const host =
+                    typeof window !== 'undefined' && window.location
+                        ? String(window.location.hostname || '')
+                        : ''
+                const isLocal =
+                    host === 'localhost' ||
+                    host === '127.0.0.1' ||
+                    host === '[::1]' ||
+                    host.endsWith('.local')
+                if (isLocal || !host) return 'http://127.0.0.1:3500'
+            }
+            return base
+        } catch {
+            return ''
+        }
+    }
+
+    const updateAccountCacheFromNextEmails = (nextEmails, accountEmail) => {
+        try {
+            if (!accountEmail) return
+            const perAccount = nextEmails.filter(e => e && e.accountEmail === accountEmail)
+            setCachedEmails(accountEmail, mailbox, perAccount)
+        } catch {}
+    }
+
+    const callMessageAction = async ({ accountEmail, messageId, action, body }) => {
+        const base = getApiBase()
+        const url = `${base}/gmail/message/${encodeURIComponent(messageId)}/${action}?email=${encodeURIComponent(accountEmail)}`
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: body ? JSON.stringify(body) : undefined
+        })
+        const data = await resp.json().catch(() => ({}))
+        if (!resp.ok) {
+            throw new Error(data.error || `Failed to ${action} email`)
+        }
+        return data
+    }
+
+    const handleArchive = async (e, email) => {
+        e.stopPropagation()
+        if (!email?.id || !email?.accountEmail) return
+        setActionBusyId(email.id)
+        try {
+            await callMessageAction({
+                accountEmail: email.accountEmail,
+                messageId: email.id,
+                action: 'modify',
+                body: { removeLabelIds: ['INBOX'] }
+            })
+            setEmails(prev => {
+                const next = prev.filter(x => x.id !== email.id)
+                updateAccountCacheFromNextEmails(next, email.accountEmail)
+                return next
+            })
+        } catch (err) {
+            console.error(err)
+            const msg = String(err?.message || '')
+            if (/insufficient authentication scopes/i.test(msg) || /insufficient.*scopes/i.test(msg)) {
+                setError('Gmail permissions are missing (need gmail.modify). Remove the account and sign in again.')
+            } else {
+                setError(msg || 'Failed to archive email')
+            }
+        } finally {
+            setActionBusyId(null)
+        }
+    }
+
+    const handleTrash = async (e, email) => {
+        e.stopPropagation()
+        if (!email?.id || !email?.accountEmail) return
+        setActionBusyId(email.id)
+        try {
+            const action = mailbox === 'TRASH' ? 'delete' : 'trash'
+            await callMessageAction({
+                accountEmail: email.accountEmail,
+                messageId: email.id,
+                action
+            })
+            setEmails(prev => {
+                const next = prev.filter(x => x.id !== email.id)
+                updateAccountCacheFromNextEmails(next, email.accountEmail)
+                return next
+            })
+            if (selectedEmailId === email.id && onEmailClick) {
+                onEmailClick(null, null)
+            }
+        } catch (err) {
+            console.error(err)
+            const msg = String(err?.message || '')
+            if (/insufficient authentication scopes/i.test(msg) || /insufficient.*scopes/i.test(msg)) {
+                setError('Gmail permissions are missing (need gmail.modify). Remove the account and sign in again.')
+            } else {
+                setError(msg || 'Failed to delete email')
+            }
+        } finally {
+            setActionBusyId(null)
+        }
+    }
+
+    const handleToggleStar = async (e, email) => {
+        e.stopPropagation()
+        if (!email?.id || !email?.accountEmail) return
+        setActionBusyId(email.id)
+        try {
+            const shouldStar = !email.starred
+            const result = await callMessageAction({
+                accountEmail: email.accountEmail,
+                messageId: email.id,
+                action: 'modify',
+                body: shouldStar
+                    ? { addLabelIds: ['STARRED'] }
+                    : { removeLabelIds: ['STARRED'] }
+            })
+            const labels = Array.isArray(result.labels) ? result.labels : null
+            setEmails(prev => {
+                const next = prev.map(x => {
+                    if (x.id !== email.id) return x
+                    const starred = labels ? labels.includes('STARRED') : shouldStar
+                    return { ...x, starred }
+                })
+                updateAccountCacheFromNextEmails(next, email.accountEmail)
+                return next
+            })
+        } catch (err) {
+            console.error(err)
+            const msg = String(err?.message || '')
+            if (/insufficient authentication scopes/i.test(msg) || /insufficient.*scopes/i.test(msg)) {
+                setError('Gmail permissions are missing (need gmail.modify). Remove the account and sign in again.')
+            } else {
+                setError(msg || 'Failed to star email')
+            }
+        } finally {
+            setActionBusyId(null)
+        }
+    }
+
+    const handleReply = async (e, email) => {
+        e.stopPropagation()
+        if (!email?.id || !email?.accountEmail) return
+        if (typeof onEmailReply === 'function') {
+            onEmailReply(email.id, email.accountEmail)
+            return
+        }
+        if (onEmailClick) onEmailClick(email.id, email.accountEmail)
+    }
+
     return (
         <div className={`flex flex-col w-full h-full min-h-0 ${className}`}>
             {/* Email List */}
-            <div className="flex-1 min-h-0 overflow-y-auto -mx-3 px-3 space-y-[1px] email-scroll w-[calc(100%+1.5rem)]">
+            <div
+                ref={scrollContainerRef}
+                onScroll={() => {
+                    const el = scrollContainerRef.current
+                    if (!el) return
+                    if (loading || loadingMore) return
+                    if (!hasMore) return
+                    const thresholdPx = 220
+                    const remaining = (el.scrollHeight - el.scrollTop - el.clientHeight)
+                    if (remaining < thresholdPx) {
+                        loadMore()
+                    }
+                }}
+                className="flex-1 min-h-0 overflow-y-auto -mx-3 px-3 space-y-[1px] email-scroll w-[calc(100%+1.5rem)]"
+            >
                 <style>{`
           .email-scroll::-webkit-scrollbar { display: none; }
           .email-scroll { -ms-overflow-style: none; scrollbar-width: none; }
@@ -382,15 +731,25 @@ const EmailList = ({
                 {filteredEmails.map((email) => {
                     const isSelected = selectedEmailId === email.id
                     const hasSearchQuery = searchQuery && searchQuery.trim()
+                    const accountEmail = email.accountEmail || filteredAccounts.find(acc => acc.email)?.email || ''
                     return (
                         <div
                             key={email.id}
-                            onMouseEnter={() => setHoveredEmailId(email.id)}
-                            onMouseLeave={() => setHoveredEmailId(null)}
+                            onMouseEnter={() => {
+                                setHoveredEmailId(email.id)
+                                if (onEmailHover) {
+                                    onEmailHover(email.id, accountEmail)
+                                }
+                            }}
+                            onMouseLeave={() => {
+                                setHoveredEmailId(null)
+                                if (onEmailHover) {
+                                    onEmailHover(null, null)
+                                }
+                            }}
                             onClick={() => {
                                 if (onEmailClick) {
                                     // Get account email from email object or find from filtered accounts
-                                    const accountEmail = email.accountEmail || filteredAccounts.find(acc => acc.email)?.email || ''
                                     onEmailClick(isSelected ? null : email.id, accountEmail)
                                 }
                             }}
@@ -436,47 +795,38 @@ const EmailList = ({
 
                         {/* Hover Actions */}
                         <div className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 transition-opacity duration-200
+              bg-black/35 backdrop-blur-md border border-white/10 rounded-lg p-1 shadow-lg
               ${hoveredEmailId === email.id ? 'opacity-100' : 'opacity-0 pointer-events-none'}
             `}>
+                            {mailbox === 'INBOX' && (
                             <button 
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    // TODO: Implement archive functionality
-                                    console.log('Archive email:', email.id)
-                                }}
+                                onClick={(e) => handleArchive(e, email)}
+                                disabled={actionBusyId === email.id}
                                 className="p-1.5 rounded hover:bg-white/10 text-white/60 hover:text-white transition-colors"
                                 title="Archive"
                             >
                                 <Archive size={12} />
                             </button>
+                            )}
                             <button 
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    // TODO: Implement delete functionality
-                                    console.log('Delete email:', email.id)
-                                }}
+                                onClick={(e) => handleTrash(e, email)}
+                                disabled={actionBusyId === email.id}
                                 className="p-1.5 rounded hover:bg-white/10 text-white/60 hover:text-white transition-colors"
-                                title="Delete"
+                                title={mailbox === 'TRASH' ? 'Delete forever' : 'Delete'}
                             >
                                 <Trash2 size={12} />
                             </button>
                             <button 
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    // TODO: Implement reply functionality
-                                    console.log('Reply to email:', email.id)
-                                }}
+                                onClick={(e) => handleReply(e, email)}
+                                disabled={actionBusyId === email.id}
                                 className="p-1.5 rounded hover:bg-white/10 text-white/60 hover:text-white transition-colors"
                                 title="Reply"
                             >
                                 <Reply size={12} />
                             </button>
                             <button 
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    // TODO: Implement star/unstar functionality
-                                    console.log('Star email:', email.id)
-                                }}
+                                onClick={(e) => handleToggleStar(e, email)}
+                                disabled={actionBusyId === email.id}
                                 className="p-1.5 rounded hover:bg-white/10 text-white/60 hover:text-white transition-colors"
                                 title={email.starred ? "Unstar" : "Star"}
                             >
@@ -486,6 +836,22 @@ const EmailList = ({
                     </div>
                     )
                 })}
+
+                {filteredEmails.length > 0 && hasMore && (
+                    <div className="py-4 flex justify-center">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                loadMore()
+                            }}
+                            disabled={loadingMore || loading}
+                            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-white/70 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {loadingMore ? 'Loading…' : 'Load more'}
+                        </button>
+                    </div>
+                )}
 
                 {filteredEmails.length === 0 && !loading && !error && (
                     <div className="flex flex-col items-center justify-center py-12 text-white/30">

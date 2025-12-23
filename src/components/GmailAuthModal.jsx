@@ -121,7 +121,12 @@ const GmailAuthModal = ({
 
       // OAuth 2.0 configuration
       const redirectUri = `${window.location.origin}/gmail-oauth-callback`
-      const scope = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile'
+      const scope = [
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile',
+      ].join(' ')
       const responseType = 'code'
       const accessType = 'offline' // Get refresh token
       const prompt = 'consent' // Force consent screen to get refresh token

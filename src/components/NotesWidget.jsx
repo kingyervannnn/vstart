@@ -182,6 +182,7 @@ const NotesWidget = ({
   onRefreshEmails,
   onPromoteEmailToCenter,
   emailsCenterOpen = false,
+  onEmailHover = null,
   onEmailClick = null,
   onWidgetAlternatorToggle = null,
   widgetAlternatorMode = 'none',
@@ -1275,6 +1276,7 @@ const NotesWidget = ({
           >
             <EmailList
               onEmailClick={onEmailClick}
+              onEmailHover={onEmailHover}
               settings={settings}
               accounts={emailAccounts}
               onCompose={onComposeEmail}

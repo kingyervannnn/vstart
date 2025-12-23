@@ -407,6 +407,8 @@ function App() {
   const [emailsCenterOpen, setEmailsCenterOpen] = useState(false);
   const [emailCenterEmailId, setEmailCenterEmailId] = useState(null);
   const [emailCenterEmailAccount, setEmailCenterEmailAccount] = useState(null);
+  const [emailHoverPreviewId, setEmailHoverPreviewId] = useState(null);
+  const [emailHoverPreviewAccount, setEmailHoverPreviewAccount] = useState(null);
   // Widget alternator: 'none' (use settings), 'notes-only', 'email-only'
   const [widgetAlternatorMode, setWidgetAlternatorMode] = useState(() => {
     try {
@@ -427,6 +429,31 @@ function App() {
   const notesEditingIdRef = useRef(null);
   const [notesHoverPreviewId, setNotesHoverPreviewId] = useState(null);
   const [notesActiveFolder, setNotesActiveFolder] = useState("");
+
+  // When center content (notes/email) is open (or email hover-preview is active), reduce main-center top padding
+  useEffect(() => {
+    const active = !!(
+      emailsCenterOpen ||
+      notesCenterNoteId ||
+      (emailHoverPreviewId && emailHoverPreviewAccount)
+    );
+    const body = typeof document !== "undefined" ? document.body : null;
+    if (!body) return;
+    if (active) {
+      body.classList.add("center-content-active");
+    } else {
+      body.classList.remove("center-content-active");
+    }
+    return () => {
+      body.classList.remove("center-content-active");
+    };
+  }, [
+    emailsCenterOpen,
+    notesCenterNoteId,
+    emailHoverPreviewId,
+    emailHoverPreviewAccount,
+  ]);
+
   const [settings, setSettings] = useState({
     ai: {
       enabled: true,
@@ -544,9 +571,14 @@ function App() {
       notesActiveId: null,
       notesContent: "",
       notesListStyle: "pill",
-      notesFilterMode: "all",
+      // Notes filter mode:
+      // - 'perWorkspace' (default): follow current workspace
+      // - 'manual': stick to a specific workspace
+      // - 'none': only unassigned notes
+      // - 'all': entire vault
+      notesFilterMode: "perWorkspace",
       notesFilterWorkspaceId: null,
-      emailCenterFilterMode: "all",
+      emailCenterFilterMode: "perWorkspace",
       emailCenterFilterWorkspaceId: null,
       showWorkspaceEmailListInsteadOfNotes: false,
       notesBlurEnabled: true,
@@ -556,6 +588,9 @@ function App() {
       notesDynamicBackground: true,
       notesHoverPreview: false,
       notesDynamicSizing: true,
+      // When true, tie per-workspace filtering to URL slug (hard switches only)
+      // When false, widgets follow workspace on both hard and soft switches
+      widgetsFollowUrlSlug: true,
       notesVault: "",
       notesVaults: [],
       notesVaultActiveId: "default",
@@ -822,7 +857,7 @@ function App() {
   const setWorkspaceBackgroundMeta = useCallback(
     async (workspaceId, meta, hintUrl) => {
       if (!workspaceId) return;
-      
+
       // Cancel any pending background loading for this workspace
       const existingController = backgroundAbortControllersRef.current.get(workspaceId);
       if (existingController) {
@@ -880,7 +915,7 @@ function App() {
           throw error;
         }
       }
-      
+
       // Check if request was aborted before updating state
       if (abortController.signal.aborted) {
         if (src && src.startsWith('blob:')) {
@@ -944,7 +979,7 @@ function App() {
         next[workspaceId] = { meta: resolvedMeta, src };
         return next;
       });
-      
+
       // Clean up controller after successful update
       backgroundAbortControllersRef.current.delete(workspaceId);
     },
@@ -1043,16 +1078,26 @@ function App() {
             ...prev,
             widgets: { ...(prev.widgets || {}), ...updated }
           }))
-        } catch {}
+        } catch { }
       }
       window.addEventListener('widgetsSettingsChanged', handleWidgetsSettingsChange)
-      
+
       const raw = localStorage.getItem("widgetsSettings");
       if (raw) {
         const parsed = JSON.parse(raw);
+        // Migrate old filter mode values to new defaults
+        const migrated = { ...parsed };
+        // If notesFilterMode is "all" or missing, default to "perWorkspace"
+        if (!migrated.notesFilterMode || migrated.notesFilterMode === "all") {
+          migrated.notesFilterMode = "perWorkspace";
+        }
+        // If emailCenterFilterMode is "all" or missing, default to "perWorkspace"
+        if (!migrated.emailCenterFilterMode || migrated.emailCenterFilterMode === "all") {
+          migrated.emailCenterFilterMode = "perWorkspace";
+        }
         setSettings((prev) => ({
           ...prev,
-          widgets: { ...prev.widgets, ...parsed },
+          widgets: { ...prev.widgets, ...migrated },
         }));
       }
     } catch { }
@@ -1936,7 +1981,7 @@ function App() {
     [settings.appearanceWorkspaces],
   );
   const appearanceWorkspacesEnabled = !!appearanceWorkspacesState.enabled;
-  
+
   // Workspace Theming state (separate from appearance workspaces)
   const [workspaceThemingEnabled, setWorkspaceThemingEnabled] = useState(() => {
     try {
@@ -1946,14 +1991,14 @@ function App() {
       return false;
     }
   });
-  
+
   // Persist workspace theming enabled state
   useEffect(() => {
     try {
       localStorage.setItem("workspaceThemingEnabled", String(workspaceThemingEnabled));
     } catch { }
   }, [workspaceThemingEnabled]);
-  
+
   // Workspace theming selection (which workspace profile is being edited)
   const [workspaceThemingSelectedId, setWorkspaceThemingSelectedId] = useState(() => {
     try {
@@ -1963,7 +2008,7 @@ function App() {
       return null;
     }
   });
-  
+
   // Persist workspace theming selection
   useEffect(() => {
     try {
@@ -1974,7 +2019,7 @@ function App() {
       }
     } catch { }
   }, [workspaceThemingSelectedId]);
-  
+
   // Workspace Widgets state (separate from appearance workspaces and workspace theming)
   const [workspaceWidgetsEnabled, setWorkspaceWidgetsEnabled] = useState(() => {
     try {
@@ -1984,14 +2029,14 @@ function App() {
       return false;
     }
   });
-  
+
   // Persist workspace widgets enabled state
   useEffect(() => {
     try {
       localStorage.setItem("workspaceWidgetsEnabled", String(workspaceWidgetsEnabled));
     } catch { }
   }, [workspaceWidgetsEnabled]);
-  
+
   // Workspace widgets selection (which workspace profile is being edited)
   const [workspaceWidgetsSelectedId, setWorkspaceWidgetsSelectedId] = useState(() => {
     try {
@@ -2001,7 +2046,7 @@ function App() {
       return null;
     }
   });
-  
+
   // Persist workspace widgets selection
   useEffect(() => {
     try {
@@ -2184,7 +2229,7 @@ function App() {
   const workspaceBackgroundsEnabled =
     settings.background?.workspaceEnabled !== false;
   const backgroundFollowSlug = !!settings.background?.followSlug;
-  
+
   // Initialize selectedWorkspaceForZoom to null (Master Override) when workspace backgrounds is enabled
   useEffect(() => {
     if (workspaceBackgroundsEnabled && !appearanceWorkspacesEnabled && selectedWorkspaceForZoom === undefined) {
@@ -2289,7 +2334,7 @@ function App() {
   useEffect(() => {
     // Wait for workspace backgrounds to be restored from localStorage before applying
     if (!workspaceBackgroundsRestoredRef.current) return;
-    
+
     // Cancel any pending background loading when workspace changes
     const controllers = backgroundAbortControllersRef.current;
     controllers.forEach((controller, wsId) => {
@@ -2301,7 +2346,7 @@ function App() {
 
     if (!workspaceBackgroundsEnabled) return;
     if (!backgroundWorkspaceId) return;
-    
+
     const entry = workspaceBackgrounds[backgroundWorkspaceId];
     if (!entry || !entry.src || !entry.meta) return;
 
@@ -3382,6 +3427,20 @@ function App() {
   };
 
   const handleRemoveEmailAccount = (account) => {
+    const email = String(account?.email || '').trim().toLowerCase()
+    if (email) {
+      try {
+        const env = typeof import.meta !== "undefined" ? (import.meta.env || {}) : {}
+        let base = env.VITE_GMAIL_API_BASE_URL || env.VITE_API_BASE_URL || ""
+        base = String(base || "").replace(/\/+$/, "")
+        const endpoint = `${base}/gmail/account/remove`
+        fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        }).catch(() => { })
+      } catch { }
+    }
     setEmailAccounts((prev) => prev.filter((a) => a.email !== account.email));
   };
 
@@ -4063,7 +4122,7 @@ function App() {
         nextSettings.appearanceWorkspaces = normalizeAppearanceWorkspaceState(
           nextSettings.appearanceWorkspaces,
         );
-        
+
         // Clean up appearance workspace state: if disabled, clear all overrides
         // Global appearance settings take precedence when appearance workspaces are disabled
         const normalizedAws = nextSettings.appearanceWorkspaces;
@@ -4242,11 +4301,11 @@ function App() {
       setWorkspaceThemingSelectedId(activeWorkspaceId);
     }
   }, [activeWorkspaceId, workspaceThemingSelectedId]);
-  
+
   const handleSelectWorkspaceTheming = useCallback((workspaceId) => {
     setWorkspaceThemingSelectedId(workspaceId);
   }, []);
-  
+
   const handleToggleWorkspaceWidgets = useCallback((enabled) => {
     setWorkspaceWidgetsEnabled(enabled);
     // When disabling, reset selection to Master Override
@@ -4257,7 +4316,7 @@ function App() {
       setWorkspaceWidgetsSelectedId(activeWorkspaceId);
     }
   }, [activeWorkspaceId, workspaceWidgetsSelectedId]);
-  
+
   const handleSelectWorkspaceWidgets = useCallback((workspaceId) => {
     setWorkspaceWidgetsSelectedId(workspaceId);
   }, []);
@@ -4313,7 +4372,7 @@ function App() {
         );
         const anchorId = prev.speedDial?.anchoredWorkspaceId || null;
         const nextOverrides = { ...(state.overrides || {}) };
-        
+
         if (enabled) {
           // When enabling workspace appearance, if no master override exists, use current appearance as master override
           if (!nextOverrides[MASTER_APPEARANCE_ID]) {
@@ -4335,9 +4394,9 @@ function App() {
             };
           }
         }
-        
+
         // Ensure we always have a valid initial target
-        const initialTarget = enabled 
+        const initialTarget = enabled
           ? (state.lastSelectedId || MASTER_APPEARANCE_ID)
           : MASTER_APPEARANCE_ID;
         const targetId = resolveAppearanceWorkspaceTargetId(
@@ -4609,17 +4668,17 @@ function App() {
         const overrides = state.overrides || {};
         const masterOverride = overrides[MASTER_WIDGETS_ID] || null;
         const workspaceOverride = overrides[targetId] || null;
-        
+
         // Build parent layer (base + master override)
         const parentLayer = masterOverride
           ? { ...baseWidgets, ...masterOverride }
           : baseWidgets;
-        
+
         // Build current widgets for this workspace
         const currentWidgets = workspaceOverride
           ? { ...parentLayer, ...workspaceOverride }
           : parentLayer;
-        
+
         // Apply mutator
         const nextWidgets = mutator(currentWidgets);
         if (!nextWidgets || typeof nextWidgets !== "object") {
@@ -4651,26 +4710,26 @@ function App() {
           ...Object.keys(nextWidgets),
           ...(workspaceOverride ? Object.keys(workspaceOverride) : [])
         ]);
-        
+
         const delta = {};
         allKeys.forEach(key => {
           const nextValue = nextWidgets[key];
           const parentValue = parentLayer[key];
-          
+
           // Handle undefined/missing keys - if key is missing in parent, it's undefined
           const nextHasKey = key in nextWidgets;
           const parentHasKey = key in parentLayer;
-          
+
           // Special handling for boolean widget enable flags:
           // - undefined in parent means "enabled by default" (treated as true)
           // - false in workspace means "explicitly disabled"
           // - true in workspace when parent is undefined means "matches default" (no override needed)
-          const isWidgetEnableFlag = key === 'enableClock' || key === 'enableWeather' || 
-                                     key === 'enableMusicPlayer' || key === 'enableNotes' || 
-                                     key === 'enableEmail';
-          
+          const isWidgetEnableFlag = key === 'enableClock' || key === 'enableWeather' ||
+            key === 'enableMusicPlayer' || key === 'enableNotes' ||
+            key === 'enableEmail';
+
           let isDifferent = false;
-          
+
           if (isWidgetEnableFlag) {
             // For widget enable flags, always store the explicit value when in a workspace profile
             // This ensures workspace-specific toggles are saved even if they match the parent default
@@ -4686,10 +4745,10 @@ function App() {
             }
           } else {
             // For other properties, use standard comparison
-            isDifferent = (nextHasKey !== parentHasKey) || 
+            isDifferent = (nextHasKey !== parentHasKey) ||
               (nextHasKey && parentHasKey && JSON.stringify(nextValue) !== JSON.stringify(parentValue));
           }
-          
+
           if (isDifferent) {
             // Value differs from parent - include in override
             delta[key] = nextValue;
@@ -4725,7 +4784,7 @@ function App() {
     },
     [updateWidgetsForWorkspace, workspaceWidgetsEditingTargetId],
   );
-  
+
   // Create ref for applyWidgetsEdit early so handlers can use it
   const applyWidgetsEditRef = useRef(null);
   useEffect(() => {
@@ -4896,7 +4955,7 @@ function App() {
   const effectiveWidgetsSettings = workspaceWidgetsEnabled
     ? activeWidgetsProfile
     : (settings.widgets || {});
-  
+
   const legacyLayoutPreset = effectiveWidgetsSettings?.layoutPreset || "preset1";
   const clockPreset = effectiveWidgetsSettings?.clockPreset || legacyLayoutPreset;
   const weatherPreset = effectiveWidgetsSettings?.weatherPreset || legacyLayoutPreset;
@@ -4937,15 +4996,15 @@ function App() {
     if (!workspaceThemingEnabled) {
       return settings?.speedDial?.glowColor || '#00ffff66';
     }
-    
+
     const anchoredWorkspaceId = settings?.speedDial?.anchoredWorkspaceId || null;
     const workspaceId = selectedWorkspaceId || activeWorkspaceId;
-    
+
     // If no workspace or it's the anchored workspace, use default glow
     if (!workspaceId || (anchoredWorkspaceId && workspaceId === anchoredWorkspaceId)) {
       return settings?.speedDial?.glowColor || '#00ffff66';
     }
-    
+
     // Otherwise, use workspace-specific glow color if available, otherwise default
     const workspaceGlowColors = settings?.speedDial?.workspaceGlowColors || {};
     return workspaceGlowColors[workspaceId] || settings?.speedDial?.glowColor || '#00ffff66';
@@ -4964,40 +5023,71 @@ function App() {
     (notesEntries.length ? notesEntries[0].id : null);
   const activeNote =
     notesEntries.find((n) => n.id === activeNoteId) || notesEntries[0] || null;
-  const notesFilterMode = settings?.widgets?.notesFilterMode || "all";
+  const notesFilterMode = settings?.widgets?.notesFilterMode || "perWorkspace";
   const notesFilterWorkspaceId =
     settings?.widgets?.notesFilterWorkspaceId || null;
-  const emailCenterFilterMode = settings?.widgets?.emailCenterFilterMode || "all";
+  const emailCenterFilterMode = settings?.widgets?.emailCenterFilterMode || "perWorkspace";
   const emailCenterFilterWorkspaceId =
     settings?.widgets?.emailCenterFilterWorkspaceId || null;
   const showWorkspaceEmailListInsteadOfNotes = settings?.widgets?.showWorkspaceEmailListInsteadOfNotes || false;
+  const widgetsFollowUrlSlug = settings?.widgets?.widgetsFollowUrlSlug !== false; // Default true
   const resolvedWorkspaceForFilter = useMemo(() => {
+    // When in perWorkspace mode:
+    // - If widgetsFollowUrlSlug is true: only follow hard switches (URL changes via lastHardWorkspaceId)
+    // - If widgetsFollowUrlSlug is false: follow both hard and soft switches (via activeWorkspaceId)
+    if (notesFilterMode === "perWorkspace" || emailCenterFilterMode === "perWorkspace") {
+      if (widgetsFollowUrlSlug) {
+        // Follow URL slug only (hard switches) - use lastHardWorkspaceId
+        return lastHardWorkspaceId || activeWorkspaceId || null;
+      } else {
+        // Follow both hard and soft switches - use activeWorkspaceId
+        return activeWorkspaceId || lastHardWorkspaceId || null;
+      }
+    }
     return (
       activeWorkspaceId ||
       lastHardWorkspaceId ||
       (workspaces && workspaces.length ? workspaces[0].id : null)
     );
-  }, [activeWorkspaceId, lastHardWorkspaceId, workspaces]);
+  }, [activeWorkspaceId, lastHardWorkspaceId, workspaces, notesFilterMode, emailCenterFilterMode, widgetsFollowUrlSlug]);
   const filteredNotesEntries = useMemo(() => {
     if (!Array.isArray(notesEntries) || !notesEntries.length) return [];
 
     let filtered = [];
     if (notesFilterMode === "perWorkspace") {
-      if (!resolvedWorkspaceForFilter) filtered = notesEntries;
-      else {
+      if (!resolvedWorkspaceForFilter) {
+        // If no workspace is resolved (shouldn't happen in normal operation),
+        // show empty list to avoid confusion
+        filtered = [];
+      } else {
         const folder = getWorkspaceFolderName(
           resolvedWorkspaceForFilter,
           workspaces,
         );
-        if (folder) {
-          filtered = notesEntries.filter(
-            (note) => (note.folder || "") === folder,
-          );
-        } else {
-          filtered = notesEntries.filter(
-            (note) => (note.workspaceId || null) === resolvedWorkspaceForFilter,
-          );
-        }
+        // Filter notes that belong to this workspace:
+        // - Must have matching folder (if folder exists) OR matching workspaceId
+        // - Exclude notes that are explicitly unassigned (folder === "unassigned" or no workspaceId)
+        filtered = notesEntries.filter((note) => {
+          const noteFolder = note.folder || "";
+          const noteWorkspaceId = note.workspaceId || null;
+
+          // Exclude explicitly unassigned notes
+          if (!noteWorkspaceId && (noteFolder === "unassigned" || !noteFolder)) {
+            return false;
+          }
+
+          // If folder exists, note must match folder
+          if (folder) {
+            if (noteFolder === folder) {
+              // Also verify workspaceId matches if note has one
+              return !noteWorkspaceId || noteWorkspaceId === resolvedWorkspaceForFilter;
+            }
+            return false;
+          }
+
+          // If no folder, match by workspaceId only
+          return noteWorkspaceId === resolvedWorkspaceForFilter;
+        });
       }
     } else if (notesFilterMode === "manual") {
       if (!notesFilterWorkspaceId) filtered = notesEntries;
@@ -5006,13 +5096,31 @@ function App() {
           notesFilterWorkspaceId,
           workspaces,
         );
+        // Similar strict filtering for manual mode
         if (folder) {
-          filtered = notesEntries.filter(
-            (note) => (note.folder || "") === folder,
-          );
+          filtered = notesEntries.filter((note) => {
+            const noteFolder = note.folder || "";
+            const noteWorkspaceId = note.workspaceId || null;
+
+            // Exclude explicitly unassigned notes
+            if (!noteWorkspaceId && (noteFolder === "unassigned" || !noteFolder)) {
+              return false;
+            }
+
+            if (noteFolder === folder) {
+              // Also verify workspaceId matches if note has one
+              return !noteWorkspaceId || noteWorkspaceId === notesFilterWorkspaceId;
+            }
+            return false;
+          });
         } else {
           filtered = notesEntries.filter(
-            (note) => (note.workspaceId || null) === notesFilterWorkspaceId,
+            (note) => {
+              const noteWorkspaceId = note.workspaceId || null;
+              // Exclude unassigned notes
+              if (!noteWorkspaceId) return false;
+              return noteWorkspaceId === notesFilterWorkspaceId;
+            },
           );
         }
       }
@@ -5082,15 +5190,15 @@ function App() {
   const baseShowEmailWidget = workspaceWidgetsEnabled
     ? (activeWidgetsProfile?.enableEmail !== false)
     : (settings?.widgets?.enableEmail !== false);
-  
+
   // Apply widget alternator mode if active - only show one widget at a time
-  const showNotesWidget = widgetAlternatorMode === 'none' 
+  const showNotesWidget = widgetAlternatorMode === 'none'
     ? baseShowNotesWidget
     : widgetAlternatorMode === 'notes-only';
   const showEmailWidget = widgetAlternatorMode === 'none'
     ? baseShowEmailWidget
     : widgetAlternatorMode === 'email-only';
-  
+
   // Auto-activate alternator mode when both widgets are enabled (so they can toggle instead of stacking)
   useEffect(() => {
     if (baseShowNotesWidget && baseShowEmailWidget && widgetAlternatorMode === 'none') {
@@ -5098,31 +5206,31 @@ function App() {
       setWidgetAlternatorMode('notes-only');
       try {
         localStorage.setItem("vstart-widget-alternator-mode", 'notes-only');
-      } catch {}
+      } catch { }
     } else if (!baseShowNotesWidget && !baseShowEmailWidget && widgetAlternatorMode !== 'none') {
       // Neither widget enabled, reset to none
       setWidgetAlternatorMode('none');
       try {
         localStorage.setItem("vstart-widget-alternator-mode", 'none');
-      } catch {}
-    } else if ((!baseShowNotesWidget && widgetAlternatorMode === 'notes-only') || 
-               (!baseShowEmailWidget && widgetAlternatorMode === 'email-only')) {
+      } catch { }
+    } else if ((!baseShowNotesWidget && widgetAlternatorMode === 'notes-only') ||
+      (!baseShowEmailWidget && widgetAlternatorMode === 'email-only')) {
       // Current alternator mode points to disabled widget, switch to the other or none
       if (baseShowNotesWidget) {
         setWidgetAlternatorMode('notes-only');
         try {
           localStorage.setItem("vstart-widget-alternator-mode", 'notes-only');
-        } catch {}
+        } catch { }
       } else if (baseShowEmailWidget) {
         setWidgetAlternatorMode('email-only');
         try {
           localStorage.setItem("vstart-widget-alternator-mode", 'email-only');
-        } catch {}
+        } catch { }
       } else {
         setWidgetAlternatorMode('none');
         try {
           localStorage.setItem("vstart-widget-alternator-mode", 'none');
-        } catch {}
+        } catch { }
       }
     }
   }, [baseShowNotesWidget, baseShowEmailWidget, widgetAlternatorMode]);
@@ -5435,6 +5543,24 @@ function App() {
       setNotesHoverPreviewId(null);
     }
   }, [settings?.widgets?.notesHoverPreview, notesCenterNoteId]);
+  useEffect(() => {
+    if (
+      !settings?.widgets?.notesHoverPreview ||
+      emailsCenterOpen ||
+      emailCenterEmailId
+    ) {
+      if (emailHoverPreviewId || emailHoverPreviewAccount) {
+        setEmailHoverPreviewId(null);
+        setEmailHoverPreviewAccount(null);
+      }
+    }
+  }, [
+    settings?.widgets?.notesHoverPreview,
+    emailsCenterOpen,
+    emailCenterEmailId,
+    emailHoverPreviewId,
+    emailHoverPreviewAccount,
+  ]);
 
   const refreshNotesFromVault = useCallback(
     async (allowWhileEditing = false) => {
@@ -5527,21 +5653,6 @@ function App() {
     }
   }, [notesCenterNoteId, activeAppearance?.masterLayout, notesForceModern]);
 
-  // Temporarily switch to modern layout when email is opened in center column
-  const emailModernOverrideRef = useRef(false);
-  useEffect(() => {
-    const base = activeAppearance?.masterLayout === "classic" ? "classic" : "modern";
-    if (emailCenterEmailId && base === "classic" && !emailModernOverrideRef.current) {
-      emailModernOverrideRef.current = true;
-      setTempModernOverride(true);
-    } else if (!emailCenterEmailId && emailModernOverrideRef.current) {
-      emailModernOverrideRef.current = false;
-      setTempModernOverride(false);
-    } else if (base === "modern" && tempModernOverride && emailModernOverrideRef.current) {
-      emailModernOverrideRef.current = false;
-      setTempModernOverride(false);
-    }
-  }, [emailCenterEmailId, activeAppearance?.masterLayout, tempModernOverride]);
   const dialOffsetModern = Number(settings?.speedDial?.verticalOffset || 0);
   const dialOffsetClassic = Number(settings?.speedDial?.landscapeOffset || 0);
   const dialVerticalOffsetPx = isClassicLayout ? 0 : dialOffsetModern;
@@ -5595,6 +5706,15 @@ function App() {
       ? "0px"
       : "calc((var(--center-left-offset) - var(--center-right-offset)) / 2)",
   };
+  const centerPanelWidth = isClassicLayout
+    ? "min(clamp(760px, 80vw, 1100px), var(--center-column-max-width, 1200px))"
+    : "min(clamp(680px, 70vw, 960px), var(--center-column-width, 100vw))";
+  const centerPanelMaxWidth = isClassicLayout
+    ? "min(1100px, var(--center-column-max-width, 1200px))"
+    : "var(--center-column-max-width, 1200px)";
+  const centerPanelHeight = isClassicLayout
+    ? "calc(100vh - 4rem - env(safe-area-inset-bottom))"
+    : "calc(100vh - 6rem - env(safe-area-inset-bottom))";
 
   const handleDialLayoutChange = useCallback(
     (workspaceId, layoutKey, layoutTiles) => {
@@ -5980,8 +6100,10 @@ function App() {
     setNotesCenterNoteId(activeNoteId);
     setNotesInlineEditing(false);
   }, [activeNoteId]);
-  
+
   const handleEmailClick = useCallback((emailId, accountEmail) => {
+    setEmailHoverPreviewId(null);
+    setEmailHoverPreviewAccount(null);
     if (!emailId) {
       setEmailCenterEmailId(null)
       setEmailCenterEmailAccount(null)
@@ -5993,18 +6115,10 @@ function App() {
   }, [])
 
   const handlePromoteEmailToCenter = useCallback(() => {
+    // Only open the center email view; do not change master layout
     setEmailsCenterOpen(true);
-    // Temporarily switch to modern layout if in classic
-    const currLayout = baseMasterLayout;
-    if (currLayout === "classic" && !layoutOverrideRef.current.active) {
-      layoutOverrideRef.current = { active: true, prev: "classic" };
-      try {
-        localStorage.setItem("lastManualMasterLayout", "classic");
-      } catch { }
-      setTempModernOverride(true);
-    }
-  }, [baseMasterLayout]);
-  
+  }, []);
+
   // Widget alternator toggle: cycles through notes-only <-> email-only (never show both)
   // Only cycles through modes that are possible based on base widget settings
   const handleWidgetAlternatorToggle = useCallback(() => {
@@ -6012,12 +6126,12 @@ function App() {
       // Determine which modes are available
       const canShowNotes = baseShowNotesWidget;
       const canShowEmail = baseShowEmailWidget;
-      
+
       if (!canShowNotes && !canShowEmail) {
         // Neither widget can be shown, stay at 'none'
         return 'none';
       }
-      
+
       // Build cycle based on available widgets - only one at a time
       let cycle = [];
       if (canShowNotes && canShowEmail) {
@@ -6028,18 +6142,18 @@ function App() {
       } else if (canShowEmail) {
         cycle = ['email-only'];
       }
-      
+
       if (cycle.length === 0) return 'none';
-      
+
       // If currently at 'none', start at first widget
       if (prev === 'none') {
         const next = cycle[0];
         try {
           localStorage.setItem("vstart-widget-alternator-mode", next);
-        } catch {}
+        } catch { }
         return next;
       }
-      
+
       // Find current position in cycle and toggle to the other
       const currentIndex = cycle.indexOf(prev);
       if (currentIndex >= 0) {
@@ -6047,26 +6161,26 @@ function App() {
         const next = cycle[nextIndex];
         try {
           localStorage.setItem("vstart-widget-alternator-mode", next);
-        } catch {}
+        } catch { }
         return next;
       }
-      
+
       // If prev mode not in cycle, start at first
       const next = cycle[0];
       try {
         localStorage.setItem("vstart-widget-alternator-mode", next);
-      } catch {}
+      } catch { }
       return next;
     });
   }, [baseShowNotesWidget, baseShowEmailWidget]);
-  
+
   // Persist widget alternator mode
   useEffect(() => {
     try {
       localStorage.setItem("vstart-widget-alternator-mode", widgetAlternatorMode);
-    } catch {}
+    } catch { }
   }, [widgetAlternatorMode]);
-  
+
   const handleEmailCenterClose = useCallback(() => {
     setEmailsCenterOpen(false);
     // Restore layout if was temporarily switched
@@ -6091,12 +6205,40 @@ function App() {
     [settings?.widgets?.notesHoverPreview, notesCenterNoteId],
   );
 
+  const handleEmailHoverPreview = useCallback(
+    (emailId, accountEmail = null) => {
+      if (
+        !settings?.widgets?.notesHoverPreview ||
+        emailsCenterOpen ||
+        emailCenterEmailId ||
+        notesCenterNoteId
+      ) {
+        setEmailHoverPreviewId(null);
+        setEmailHoverPreviewAccount(null);
+        return;
+      }
+      if (!emailId) {
+        setEmailHoverPreviewId(null);
+        setEmailHoverPreviewAccount(null);
+        return;
+      }
+      setEmailHoverPreviewId((prev) => (prev === emailId ? prev : emailId));
+      setEmailHoverPreviewAccount(accountEmail || null);
+    },
+    [
+      settings?.widgets?.notesHoverPreview,
+      emailsCenterOpen,
+      emailCenterEmailId,
+      notesCenterNoteId,
+    ],
+  );
+
   const handleEmailCenterFilterChange = useCallback((mode, workspaceId = null) => {
     setSettings((prev) => ({
       ...prev,
       widgets: {
         ...(prev.widgets || {}),
-        emailCenterFilterMode: mode || "all",
+        emailCenterFilterMode: mode || "perWorkspace",
         emailCenterFilterWorkspaceId: workspaceId || null,
       },
     }));
@@ -6146,7 +6288,7 @@ function App() {
         note.vaultId,
         updatedNote,
         note.folder || "",
-      ).catch(() => {});
+      ).catch(() => { });
     }
   }, [notesEntries]);
 
@@ -6203,8 +6345,8 @@ function App() {
       };
       saveNoteToVault(vaultId, payload);
     }
-	  }, [notesEntries, workspaces, settings?.widgets?.notesVaultActiveId]);
-	
+  }, [notesEntries, workspaces, settings?.widgets?.notesVaultActiveId]);
+
   const settingsCurrentBackground = useMemo(() => {
     if (workspaceBackgroundsEnabled && appearanceWorkspacesEnabled) {
       const targetWorkspaceId = appearanceEditingTargetId === MASTER_APPEARANCE_ID ? null : appearanceEditingTargetId;
@@ -6698,6 +6840,15 @@ function App() {
           widgets: {
             ...(prev.widgets || {}),
             notesDynamicSizing: !!val,
+          },
+        }))
+      }
+      onToggleWidgetsFollowUrlSlug={(val) =>
+        setSettings((prev) => ({
+          ...prev,
+          widgets: {
+            ...(prev.widgets || {}),
+            widgetsFollowUrlSlug: !!val,
           },
         }))
       }
@@ -8219,6 +8370,7 @@ function App() {
                       }}
                       onPromoteEmailToCenter={handlePromoteEmailToCenter}
                       emailsCenterOpen={emailsCenterOpen}
+                      onEmailHover={handleEmailHoverPreview}
                       onEmailClick={handleEmailClick}
                       onWidgetAlternatorToggle={handleWidgetAlternatorToggle}
                       widgetAlternatorMode={widgetAlternatorMode}
@@ -8240,6 +8392,7 @@ function App() {
                       }}
                       onPromoteEmailToCenter={handlePromoteEmailToCenter}
                       emailsCenterOpen={emailsCenterOpen}
+                      onEmailHover={handleEmailHoverPreview}
                       onEmailClick={handleEmailClick}
                       filterMode={emailCenterFilterMode}
                       filterWorkspaceId={emailCenterFilterWorkspaceId}
@@ -8248,6 +8401,8 @@ function App() {
                       currentWorkspaceId={resolvedWorkspaceForFilter}
                       onWidgetAlternatorToggle={handleWidgetAlternatorToggle}
                       widgetAlternatorMode={widgetAlternatorMode}
+                      linkSpeedDialBlur={!!settings?.widgets?.notesLinkSpeedDialBlur}
+                      linkedBlurPx={currentSpeedDialBlurPx}
                       className="flex-1 min-h-[240px]"
                     />
                   )}
@@ -8322,13 +8477,16 @@ function App() {
                   </div>
                 )}
               <div
-                className="w-full flex flex-col items-center space-y-8 center-column-host"
+                className="w-full flex flex-col items-center center-column-host"
                 style={{
                   maxWidth:
                     "min(var(--center-column-width), var(--center-column-max-width))",
                   paddingLeft: "var(--center-floating-padding)",
                   paddingRight: "var(--center-floating-padding)",
                   marginTop: isClassicLayout ? "2rem" : undefined,
+                  position: "relative",
+                  gap: "1.75rem",
+                  minHeight: "0",
                 }}
               >
                 {/* Pinned search box container */}
@@ -8336,41 +8494,89 @@ function App() {
                 {/* Search results will be displayed here */}
                 <div id="search-results" className="w-full"></div>
                 {showEmailWidget && emailsCenterOpen && (
-                  <div className="w-full flex justify-center px-2 notes-overlay-slot" style={{ paddingTop: '3rem', paddingBottom: '4rem', maxHeight: 'calc(100vh - 8rem)' }}>
-                    <div
-                      className="w-full"
-                      style={{
-                        maxWidth:
-                          "calc(min(clamp(720px, 72vw, 1000px), var(--center-column-width, 1000px)) + 8px)",
-                        marginRight: "-8px",
+                  <div
+                    className="center-mail-shell notes-overlay-slot"
+                    style={{
+                      marginTop: "12px",
+                    }}
+                  >
+                    <EmailOverlay
+                      settings={resolvedNotesSettings}
+                      onClose={() => {
+                        handleEmailCenterClose()
+                        setEmailCenterEmailId(null)
+                        setEmailCenterEmailAccount(null)
                       }}
-                    >
-                      <EmailOverlay
-                        settings={resolvedNotesSettings}
-                        onClose={() => {
-                          handleEmailCenterClose()
-                          setEmailCenterEmailId(null)
-                          setEmailCenterEmailAccount(null)
-                        }}
-                        emailAccounts={emailAccounts}
-                        selectedEmailId={emailCenterEmailId}
-                        selectedEmailAccount={emailCenterEmailAccount}
-                        workspaces={workspaces}
-                        currentWorkspaceId={resolvedWorkspaceForFilter}
-                        currentWorkspace={workspaces.find(w => w.id === resolvedWorkspaceForFilter) || null}
-                        filterMode={emailCenterFilterMode}
-                        filterWorkspaceId={emailCenterFilterWorkspaceId}
-                        onChangeFilter={handleEmailCenterFilterChange}
-                        onComposeEmail={() => {
-                          console.log('Compose email')
-                        }}
-                        onRefreshEmails={() => {
-                          console.log('Refresh emails')
-                        }}
-                      />
-                    </div>
+                      emailAccounts={emailAccounts}
+                      selectedEmailId={emailCenterEmailId}
+                      selectedEmailAccount={emailCenterEmailAccount}
+                      onEmailClick={handleEmailClick}
+                      workspaces={workspaces}
+                      currentWorkspaceId={resolvedWorkspaceForFilter}
+                      currentWorkspace={workspaces.find(w => w.id === resolvedWorkspaceForFilter) || null}
+                      filterMode={emailCenterFilterMode}
+                      filterWorkspaceId={emailCenterFilterWorkspaceId}
+                      onChangeFilter={handleEmailCenterFilterChange}
+                      onComposeEmail={() => {
+                        console.log('Compose email')
+                      }}
+                      onRefreshEmails={() => {
+                        console.log('Refresh emails')
+                      }}
+                      panelWidth={centerPanelWidth}
+                      panelMaxWidth={centerPanelMaxWidth}
+                      panelHeight={centerPanelHeight}
+                    />
                   </div>
                 )}
+                {showEmailWidget &&
+                  !emailsCenterOpen &&
+                  !notesCenterNoteId &&
+                  emailHoverPreviewId &&
+                  emailHoverPreviewAccount &&
+                  settings?.widgets?.notesHoverPreview && (
+                    <div
+                      className="center-mail-shell notes-overlay-slot pointer-events-none"
+                      style={{
+                        marginTop: "12px",
+                      }}
+                    >
+                      <div
+                        className="center-mail-frame text-white animate-in fade-in zoom-in-95 duration-200"
+                        style={{
+                          width: centerPanelWidth,
+                          maxWidth: centerPanelMaxWidth,
+                          height: centerPanelHeight,
+                          maxHeight: centerPanelHeight,
+                          opacity: 0.92,
+                        }}
+                      >
+                        <div className="center-mail-header">
+                          <div className="center-mail-title-row">
+                            <div className="flex items-center gap-3">
+                              <div className="w-5 h-5 rounded bg-cyan-400/20 flex items-center justify-center">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cyan-400">
+                                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                                  <polyline points="22,6 12,13 2,6" />
+                                </svg>
+                              </div>
+                              <span className="text-lg font-semibold text-white/90">Loading preview...</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="center-mail-body">
+                          <div className="center-mail-scroll">
+                            <div className="center-mail-pane flex items-center justify-center">
+                              <div className="flex flex-col items-center gap-3 text-white/50">
+                                <div className="w-8 h-8 border-2 border-white/20 border-t-cyan-400 rounded-full animate-spin"></div>
+                                <span className="text-sm">Loading email preview...</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 {showNotesWidget && notesCenterNoteId && editingNote && (
                   <div className="w-full flex justify-center px-2 notes-overlay-slot">
                     <div
@@ -8380,13 +8586,13 @@ function App() {
                           "calc(min(clamp(720px, 72vw, 1000px), var(--center-column-width, 1000px)) + 8px)",
                         marginRight: "-8px",
                       }}
-	                    >
-	                      <NotesOverlay
-	                        settings={resolvedNotesSettings}
-	                        note={editingNote}
-	                        draftValue={notesDraft}
-	                        onDraftChange={setNotesDraft}
-	                        onTitleChange={handleNoteTitleChange}
+                    >
+                      <NotesOverlay
+                        settings={resolvedNotesSettings}
+                        note={editingNote}
+                        draftValue={notesDraft}
+                        onDraftChange={setNotesDraft}
+                        onTitleChange={handleNoteTitleChange}
                         onClose={handleCenterClose}
                         onPopInline={() => {
                           setNotesCenterNoteId(null);
@@ -8405,7 +8611,15 @@ function App() {
                   !notesCenterNoteId &&
                   hoverPreviewNote &&
                   settings?.widgets?.notesHoverPreview && (
-                    <div className="w-full flex justify-center px-2 notes-overlay-slot pointer-events-none">
+                    <div
+                      className="w-full flex justify-center px-2 notes-overlay-slot pointer-events-none"
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                      }}
+                    >
                       <div
                         className="w-full"
                         style={{
@@ -8414,11 +8628,11 @@ function App() {
                           marginRight: "-8px",
                         }}
                       >
-	                        <NotesOverlay
-	                          settings={resolvedNotesSettings}
-	                          note={hoverPreviewNote}
-	                          draftValue={hoverPreviewNote?.content || ""}
-	                          onDraftChange={() => { }}
+                        <NotesOverlay
+                          settings={resolvedNotesSettings}
+                          note={hoverPreviewNote}
+                          draftValue={hoverPreviewNote?.content || ""}
+                          onDraftChange={() => { }}
                           onClose={() => { }}
                           previewMode
                           workspaces={workspaces}
@@ -8707,6 +8921,11 @@ function App() {
 
         /* Raise center content when inline search is active */
         body.inline-active .main-center {
+          padding-top: 1rem !important;
+        }
+
+        /* Raise center content when center overlays (notes/email) are open */
+        body.center-content-active .main-center {
           padding-top: 1rem !important;
         }
       `}</style>

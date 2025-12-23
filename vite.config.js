@@ -29,6 +29,11 @@ export default defineConfig({
         target: 'http://127.0.0.1:3500',
         changeOrigin: true,
       },
+      // Notes API (local Obsidian-compatible vault sync)
+      '/notes': {
+        target: 'http://127.0.0.1:3400',
+        changeOrigin: true,
+      },
       // Local STT server (Faster-Whisper)
       '/stt': {
         target: 'http://127.0.0.1:8090',

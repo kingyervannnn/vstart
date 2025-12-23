@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useLayoutEffect } from 'react'
-import { Mail, RefreshCw, Pin, PinOff } from 'lucide-react'
+import { Mail, RefreshCw, Pin, PinOff, ArrowRight, ArrowLeft, Inbox, Send, ShieldAlert, Star, Trash2 } from 'lucide-react'
 import EmailList from './EmailList'
 
 const sanitizeHex = (hex, fallback = '#ffffff') => {
@@ -31,6 +31,7 @@ const EmailWidget = ({
   onRefreshEmails,
   onPromoteEmailToCenter,
   emailsCenterOpen = false,
+  onEmailHover = null,
   onEmailClick = null,
   filterMode = 'all',
   filterWorkspaceId = null,
@@ -40,10 +41,13 @@ const EmailWidget = ({
   className = '',
   onWidgetAlternatorToggle = null,
   widgetAlternatorMode = 'none',
+  linkSpeedDialBlur = false,
+  linkedBlurPx = 0,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isPinned, setIsPinned] = useState(false)
   const [availableHeight, setAvailableHeight] = useState(null)
+  const [mailbox, setMailbox] = useState('INBOX')
   const containerRef = useRef(null)
 
   const colorPrimary = useMemo(
@@ -61,11 +65,16 @@ const EmailWidget = ({
   const removeBackgrounds = settings?.notesRemoveBackground !== false
   const removeOutlines = settings?.notesRemoveOutline !== false
   const glowShadow = settings?.notesGlowShadow !== false
-  const blurEnabled = settings?.notesBlurEnabled !== false
+  const useLinkedBlur = !!linkSpeedDialBlur || settings?.notesLinkSpeedDialBlur
+  const rawLinkedBlur = Number.isFinite(Number(linkedBlurPx))
+    ? Math.max(0, Number(linkedBlurPx))
+    : 0
+  const blurEnabled = useLinkedBlur ? true : settings?.notesBlurEnabled !== false
   const manualBlur = Number.isFinite(Number(settings?.notesBlurPx))
     ? Math.max(0, Math.min(40, Number(settings.notesBlurPx)))
     : 18
-  const blurPx = blurEnabled ? manualBlur : 0
+  const blurBase = useLinkedBlur ? rawLinkedBlur : manualBlur
+  const blurPx = blurEnabled ? blurBase : 0
   const accentGlow = hexToRgba(glowColorForShadow, 0.55)
   const effectiveCollapsed = isPinned ? false : isCollapsed
 
@@ -209,6 +218,23 @@ const EmailWidget = ({
               <RefreshCw size={12} strokeWidth={2} />
             </button>
           )}
+          {typeof onPromoteEmailToCenter === 'function' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onPromoteEmailToCenter?.()
+              }}
+              className="p-1 rounded hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+              title="Show email list in center column"
+            >
+              {settings?.isMirrorLayout ? (
+                <ArrowLeft size={12} strokeWidth={2} />
+              ) : (
+                <ArrowRight size={12} strokeWidth={2} />
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -224,8 +250,37 @@ const EmailWidget = ({
             minHeight: 0
           }}
         >
+          <div className="px-2 pb-2">
+            <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-1">
+              {[
+                { id: 'INBOX', label: 'Inbox', Icon: Inbox },
+                { id: 'SENT', label: 'Sent', Icon: Send },
+                { id: 'STARRED', label: 'Starred', Icon: Star },
+                { id: 'SPAM', label: 'Spam', Icon: ShieldAlert },
+                { id: 'TRASH', label: 'Trash', Icon: Trash2 },
+              ].map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMailbox(id)
+                  }}
+                  className={`p-1.5 rounded-md transition-colors ${
+                    mailbox === id
+                      ? 'bg-white/15 text-white'
+                      : 'text-white/60 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={label}
+                >
+                  <Icon size={13} />
+                </button>
+              ))}
+            </div>
+          </div>
           <EmailList
             onEmailClick={onEmailClick}
+            onEmailHover={onEmailHover}
             settings={settings}
             accounts={emailAccounts}
             onCompose={onComposeEmail}
@@ -234,6 +289,11 @@ const EmailWidget = ({
             onChangeFilter={onChangeFilter}
             workspaces={workspaces}
             currentWorkspaceId={currentWorkspaceId}
+            mailbox={mailbox}
+            onEmailReply={(emailId, accountEmail) => {
+              // Sidebar reply: open in center overlay; reply action available there.
+              onEmailClick?.(emailId, accountEmail)
+            }}
           />
         </div>
       )}
@@ -242,4 +302,3 @@ const EmailWidget = ({
 }
 
 export default EmailWidget
-

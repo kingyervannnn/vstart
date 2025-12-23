@@ -219,6 +219,7 @@ const SettingsButton = ({
   onToggleMusicDisableButtonBackgrounds,
   onToggleMusicGlowShadow,
   onChangeWidgetsVerticalOffset,
+  onToggleWidgetsFollowUrlSlug,
   // Icon Theming
   onToggleIconThemingEnabled,
   onSelectIconThemingMode,
@@ -4294,7 +4295,23 @@ const SettingsButton = ({
                         <input
                           type="checkbox"
                           checked={widgetsSettings?.weatherShowDetailsOnHover !== false}
-                          onChange={(e) => onToggleWeatherHoverDetails?.(!!e.target.checked)}
+                          onChange={(e) => {
+                            const newValue = !!e.target.checked
+                            // Update React state via App callback
+                            onToggleWeatherHoverDetails?.(newValue)
+                            // Persist to localStorage so it survives full restarts
+                            try {
+                              const current = JSON.parse(localStorage.getItem('widgetsSettings') || '{}')
+                              const updated = { ...current, weatherShowDetailsOnHover: newValue }
+                              localStorage.setItem('widgetsSettings', JSON.stringify(updated))
+                              // Notify App.jsx to merge the updated widgets settings immediately
+                              window.dispatchEvent(
+                                new CustomEvent('widgetsSettingsChanged', { detail: updated })
+                              )
+                            } catch (err) {
+                              console.error('Failed to update weatherShowDetailsOnHover setting:', err)
+                            }
+                          }}
                         />
                       </label>
                       <div className="flex items-center justify-between bg-white/5 border border-white/10 rounded px-2 py-2">
@@ -4424,6 +4441,29 @@ const SettingsButton = ({
                       <div>
                         <div className="text-white text-sm font-medium">Center Content Appearance</div>
                         <div className="text-white/60 text-xs">Shared appearance preferences for notes and email widgets when opened in the center column.</div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                        <div>
+                          <div className="text-white text-xs font-medium">Follows workspace URL slug</div>
+                          <div className="text-white/60 text-[11px]">When checked, widgets only follow workspace changes on hard URL switches. When unchecked, widgets follow workspace on both hard and soft switches.</div>
+                        </div>
+                        <label 
+                          className="inline-flex items-center cursor-pointer select-none"
+                          style={{ touchAction: 'manipulation' }}
+                          onTouchStart={handleToggleTouchStart}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={settings?.widgets?.widgetsFollowUrlSlug !== false}
+                            onChange={(e) => onToggleWidgetsFollowUrlSlug?.(!!e.target.checked)}
+                            className="peer absolute opacity-0 w-0 h-0"
+                            onFocus={handleToggleFocus}
+                          />
+                          <div className="w-11 h-6 bg-white/20 rounded-full relative transition-colors peer-checked:bg-cyan-500/60">
+                            <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:left-5 shadow" />
+                          </div>
+                        </label>
                       </div>
 
                       <div className="space-y-2">
@@ -4851,7 +4891,12 @@ const SettingsButton = ({
                                   
                                   // Build OAuth URL
                                   const redirectUri = `${window.location.origin}/gmail-oauth-callback`
-                                  const scope = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile'
+                                  const scope = [
+                                    'https://www.googleapis.com/auth/gmail.modify',
+                                    'https://www.googleapis.com/auth/gmail.send',
+                                    'https://www.googleapis.com/auth/userinfo.email',
+                                    'https://www.googleapis.com/auth/userinfo.profile',
+                                  ].join(' ')
                                   
                                   // Log the scope being requested for debugging
                                   console.log('🔐 Gmail OAuth - Requesting scopes:', scope)

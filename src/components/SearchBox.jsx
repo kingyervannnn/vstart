@@ -1297,8 +1297,9 @@ const SearchBox = forwardRef(({
           const contentRect = centerContentEl.getBoundingClientRect()
           const contentHeight = contentRect.height || 0
           if (contentHeight > 0) {
-            // Push by about 40% of the content height to avoid overlap
-            const pushAmount = contentHeight * 0.4 + 60 // 60px minimum spacing
+            // Push by about 40% of the content height to avoid overlap,
+            // but clamp to avoid large jumps on tall overlays (email center)
+            const pushAmount = Math.min(contentHeight * 0.4 + 60, 320)
             centerContentOffset = pushDirection === 'up' ? -pushAmount : pushAmount
           }
         }
